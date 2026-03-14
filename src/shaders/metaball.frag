@@ -17,16 +17,41 @@ uniform float fillLightStrength;
 
 varying vec2 vUv;
 
-// ── Squish kernel ────────────────────────────────────────────────────────────
-// Instead of a separate seed, we warp the distance metric inside the Wyvill
-// kernel. The idea: project the offset vector onto the velocity direction.
-// Points *behind* the blob (against velocity) get their distance reduced —
-// the field reaches further back, pulling the isosurface into a teardrop.
-// Points in front get a tiny compression. The warp is smooth and continuous
-// so there are no discontinuities, pinches, or extra lobes.
-//
-// squishAmt scales with speed (clamped). At speed=0 it's exactly a sphere.
-// ────────────────────────────────────────────────────────────────────────────
+// ── Noise ────────────────────────────────────────────────────────────────────
+// Two-octave value noise. Cheap, smooth, no texture lookup needed.
+// Used to perturb the field just before the isosurface threshold so the
+// blob edges wobble organically rather than sitting on a perfectly smooth shell.
+
+float hash(vec2 p) {
+    p = fract(p * vec2(127.1, 311.7));
+    p += dot(p, p + 19.19);
+    return fract(p.x * p.y);
+}
+
+float valueNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    // Smooth interpolation
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+        mix(hash(i + vec2(0,0)), hash(i + vec2(1,0)), u.x),
+        mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), u.x),
+        u.y
+    );
+}
+
+float fbm(vec2 p) {
+    // Two octaves — enough for organic lumps, cheap enough for per-pixel eval
+    float v  = valueNoise(p)          * 0.62;
+          v += valueNoise(p * 2.1 + vec2(3.7, 1.3)) * 0.38;
+    return v;  // range ~[0, 1]
+}
+
+// Noise parameters — tweak here
+const float NOISE_SCALE    = 1.5;   // spatial frequency (lower = bigger lumps)
+const float NOISE_STRENGTH = 0.04; // how much noise shifts the field value
+const float NOISE_SPEED    = 0.6;  // how fast the surface slowly crawls
+// ─────────────────────────────────────────────────────────────────────────────
 
 float wyvill(float d2, float R) {
     float r2 = R * R;
@@ -37,31 +62,14 @@ float wyvill(float d2, float R) {
 
 float squishKernel(vec2 offset, float R, vec2 vel) {
     float speed = length(vel);
+    if (speed < 0.01) return wyvill(dot(offset, offset), R);
 
-    // No squish when nearly still — pure sphere
-    if (speed < 0.01) {
-        return wyvill(dot(offset, offset), R);
-    }
-
-    vec2 dir = vel / speed;  // unit vector of motion
-
-    // How far behind the blob is this point?
-    // Positive = in front (leading edge), negative = behind (trailing edge)
-    float along = dot(offset, dir);
-
-    // Squish amount grows with speed, capped at 0.38 (tasteful teardrop)
+    vec2  dir       = vel / speed;
+    float along     = dot(offset, dir);
     float squishAmt = clamp(speed * 1.6, 0.0, 0.38);
-
-    // Warp: stretch the radius in the trailing direction.
-    // We scale the "along" component so the back of the blob is further in
-    // field-space (larger apparent radius) and the front is slightly tighter.
-    // The perpendicular component is unchanged — no ellipse, just a lean.
-    float warpScale = 1.0 - squishAmt * sign(along) * 0.55;
-    warpScale = clamp(warpScale, 0.55, 1.45);
-
-    vec2 perp = offset - along * dir;
-    vec2 warped = perp + dir * (along * warpScale);
-
+    float warpScale = clamp(1.0 - squishAmt * sign(along) * 0.55, 0.55, 1.45);
+    vec2  perp      = offset - along * dir;
+    vec2  warped    = perp + dir * (along * warpScale);
     return wyvill(dot(warped, warped), R);
 }
 
@@ -72,6 +80,14 @@ float field(vec2 p) {
         vec2 offset = p - blobs[i];
         f += squishKernel(offset, radii[i] * 2.8, velocities[i]);
     }
+
+    // Add slowly-drifting low-frequency noise.
+    // The noise only meaningfully shifts the field near the isosurface
+    // (where f ≈ threshold), so blob interiors stay clean while edges wobble.
+    vec2 noiseCoord = p * NOISE_SCALE + vec2(time * NOISE_SPEED, time * NOISE_SPEED * 0.7);
+    float n = fbm(noiseCoord) * 2.0 - 1.0;  // remap [0,1] → [-1,1]
+    f += n * NOISE_STRENGTH;
+
     return f;
 }
 
