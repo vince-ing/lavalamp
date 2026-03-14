@@ -11,7 +11,8 @@ export function createLavaMaterial(): THREE.ShaderMaterial {
         radii: { value: new Float32Array(MAX_BLOBS) },
         blobCount: { value: 0 },
         threshold: { value: 1.2 },
-        time: { value: 0 }
+        time: { value: 0 },
+        aspect: { value: window.innerWidth / window.innerHeight } // Add aspect uniform
     };
 
     return new THREE.ShaderMaterial({

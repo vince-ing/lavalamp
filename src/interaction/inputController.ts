@@ -6,12 +6,15 @@ export class InputController {
     private isClicked: boolean = false;
 
     constructor(canvas: HTMLCanvasElement) {
-        // Track mouse position and map it to simulation coordinates
         canvas.addEventListener('mousemove', (e: MouseEvent) => {
             const rect = canvas.getBoundingClientRect();
-            // Map X to [-LAMP_WIDTH/2, LAMP_WIDTH/2]
-            this.mouse.x = ((e.clientX - rect.left) / rect.width) * LAMP_WIDTH - (LAMP_WIDTH / 2);
-            // Map Y to [0, LAMP_HEIGHT] (inverted because DOM Y is top-down)
+            
+            // Calculate dynamic physics width on the fly based on the canvas dimensions
+            const aspect = rect.width / rect.height;
+            const dynamicWidth = LAMP_HEIGHT * aspect;
+
+            // Map mouse coordinates to the dynamic physics boundaries
+            this.mouse.x = ((e.clientX - rect.left) / rect.width) * dynamicWidth - (dynamicWidth / 2);
             this.mouse.y = (1.0 - (e.clientY - rect.top) / rect.height) * LAMP_HEIGHT;
         });
 

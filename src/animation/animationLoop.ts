@@ -15,26 +15,25 @@ export function startLoop(
     function animate(currentTime: number) {
         requestAnimationFrame(animate);
 
-        // Compute dt (delta time in seconds)
-        // Capped at 0.1s to prevent physics explosions during lag spikes or tab switching
         const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
         lastTime = currentTime;
+        
+        const timeInSeconds = currentTime / 1000;
+        const aspect = window.innerWidth / window.innerHeight; // Calculate current aspect
 
-        // 1. Process interactions
         if (inputController) {
             inputController.update(blobSystem);
         }
 
-        // 2. Update blob system physics
-        blobSystem.update(dt);
+        // Pass aspect ratio to the physics system
+        blobSystem.update(dt, timeInSeconds, aspect);
 
-        // 3. Update shader uniforms
         material.uniforms.blobs.value = blobSystem.getBlobPositions();
         material.uniforms.radii.value = blobSystem.getBlobRadii();
         material.uniforms.blobCount.value = blobSystem.getBlobCount();
-        material.uniforms.time.value = currentTime / 1000;
+        material.uniforms.time.value = timeInSeconds;
+        material.uniforms.aspect.value = aspect; // Update shader uniform
 
-        // 4. Render scene
         renderer.render(scene, camera);
     }
 

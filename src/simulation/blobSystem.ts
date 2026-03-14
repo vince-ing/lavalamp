@@ -19,20 +19,20 @@ export class BlobSystem {
         this.radii = new Float32Array(MAX_BLOBS);
     }
 
-    update(dt: number): void {
-        const halfWidth = LAMP_WIDTH / 2;
+    update(dt: number, time: number, aspect: number): void {
+        // Calculate dynamic width based on the fixed height (4.0) and aspect ratio
+        const dynamicWidth = LAMP_HEIGHT * aspect;
+        const halfWidth = dynamicWidth / 2;
 
         for (let i = 0; i < this.blobs.length; i++) {
             const blob = this.blobs[i];
 
-            // 1. Apply physics
-            updateBlob(blob, dt);
+            updateBlob(blob, dt, time);
 
-            // 2. Update position
             blob.position.x += blob.velocity.x * dt;
             blob.position.y += blob.velocity.y * dt;
 
-            // 3. Enforce bounds & apply slight dampening on collision
+            // Enforce dynamic X bounds
             if (blob.position.x < -halfWidth + blob.radius) {
                 blob.position.x = -halfWidth + blob.radius;
                 blob.velocity.x *= -0.5;
@@ -41,6 +41,7 @@ export class BlobSystem {
                 blob.velocity.x *= -0.5;
             }
 
+            // Enforce Y bounds (remains unchanged)
             if (blob.position.y < blob.radius) {
                 blob.position.y = blob.radius;
                 blob.velocity.y *= -0.5;
@@ -49,11 +50,9 @@ export class BlobSystem {
                 blob.velocity.y *= -0.5;
             }
 
-            // Apply slight ambient drag to stabilize the system
             blob.velocity.x *= 0.99;
             blob.velocity.y *= 0.99;
 
-            // 4. Update Float32Arrays for the shader uniforms
             this.positions[i * 2] = blob.position.x;
             this.positions[i * 2 + 1] = blob.position.y;
             this.radii[i] = blob.radius;
