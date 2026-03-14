@@ -13,7 +13,7 @@ export const PALETTE = {
 export const LAYER_BLOB_COUNTS = {
     back:   4,   // fewest, darkest
     middle: 4,   // most
-    front:  20,   // fewer, brightest
+    front:  17,   // fewer, brightest
 };
 
 export const FILL_LIGHT_STRENGTH = 0.17 // 0.0 = off, 1.0 = as strong as main lamp

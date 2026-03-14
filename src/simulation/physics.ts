@@ -1,13 +1,28 @@
 import { Blob } from '../core/types';
 import { GRAVITY, BUOYANCY, HEAT_ZONE, COOL_ZONE, TURBULENCE, REPULSION_STRENGTH, REPULSION_MIN_DIST } from '../core/constants';
 
-export function updateBlob(blob: Blob, dt: number, time: number): void {
+export function updateBlob(blob: Blob, dt: number, _time: number): void {
+    // Advance this blob's own private clock at its own speed.
+    // No two blobs share a clock so turbulence can never synchronise.
+    blob.privateTime += dt * blob.noiseSpeed;
+
+    const t = blob.privateTime;
+
     const buoyF = (blob.temperature - 1.0) * BUOYANCY;
     blob.velocity.y += buoyF * dt;
     blob.velocity.y -= GRAVITY * dt;
 
-    blob.velocity.x += Math.sin(time * 1.1  + blob.noisePhaseX) * TURBULENCE * dt;
-    blob.velocity.y += Math.cos(time * 0.85 + blob.noisePhaseY * 1.3) * TURBULENCE * 0.4 * dt;
+    // Two incommensurate terms per axis, all driven by the private clock.
+    // The phase offsets (noisePhaseX/Y) are baked-in random seeds.
+    blob.velocity.x += (
+        Math.sin(t              + blob.noisePhaseX) * 0.65 +
+        Math.sin(t * 2.7183     + blob.noisePhaseY) * 0.35
+    ) * TURBULENCE * dt;
+
+    blob.velocity.y += (
+        Math.cos(t * 1.3137     + blob.noisePhaseY) * 0.65 +
+        Math.cos(t * 0.6180     + blob.noisePhaseX) * 0.35
+    ) * TURBULENCE * 0.4 * dt;
 
     if (blob.position.y < HEAT_ZONE) blob.temperature = Math.min(2.0, blob.temperature + 0.6  * dt);
     if (blob.position.y > COOL_ZONE) blob.temperature = Math.max(0.0, blob.temperature - 0.35 * dt);

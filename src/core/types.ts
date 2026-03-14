@@ -10,6 +10,7 @@ export interface Blob {
     noisePhaseY: number;
     noiseSpeed:  number;
     noiseAmp:    number;
+    privateTime: number;  // each blob's own clock, advances at its own rate
 }
 
 export interface SceneContext {
