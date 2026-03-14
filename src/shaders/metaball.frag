@@ -1,20 +1,32 @@
-uniform vec2 blobs[25];
+uniform vec2  blobs[25];
 uniform float radii[25];
-uniform int blobCount;
+uniform vec2  velocities[25];
+uniform int   blobCount;
 uniform float threshold;
 uniform float time;
 uniform float aspect;
 uniform vec3  colorFogBlend;
 uniform float fogAmount;
 
-uniform vec3 colorFluidTop;
-uniform vec3 colorFluidBottom;
-uniform vec3 colorWaxEdge;
-uniform vec3 colorWaxCore;
-uniform vec3 colorFillLight;
+uniform vec3  colorFluidTop;
+uniform vec3  colorFluidBottom;
+uniform vec3  colorWaxEdge;
+uniform vec3  colorWaxCore;
+uniform vec3  colorFillLight;
 uniform float fillLightStrength;
 
 varying vec2 vUv;
+
+// ── Squish kernel ────────────────────────────────────────────────────────────
+// Instead of a separate seed, we warp the distance metric inside the Wyvill
+// kernel. The idea: project the offset vector onto the velocity direction.
+// Points *behind* the blob (against velocity) get their distance reduced —
+// the field reaches further back, pulling the isosurface into a teardrop.
+// Points in front get a tiny compression. The warp is smooth and continuous
+// so there are no discontinuities, pinches, or extra lobes.
+//
+// squishAmt scales with speed (clamped). At speed=0 it's exactly a sphere.
+// ────────────────────────────────────────────────────────────────────────────
 
 float wyvill(float d2, float R) {
     float r2 = R * R;
@@ -23,13 +35,42 @@ float wyvill(float d2, float R) {
     return t * t * t;
 }
 
+float squishKernel(vec2 offset, float R, vec2 vel) {
+    float speed = length(vel);
+
+    // No squish when nearly still — pure sphere
+    if (speed < 0.01) {
+        return wyvill(dot(offset, offset), R);
+    }
+
+    vec2 dir = vel / speed;  // unit vector of motion
+
+    // How far behind the blob is this point?
+    // Positive = in front (leading edge), negative = behind (trailing edge)
+    float along = dot(offset, dir);
+
+    // Squish amount grows with speed, capped at 0.38 (tasteful teardrop)
+    float squishAmt = clamp(speed * 1.6, 0.0, 0.38);
+
+    // Warp: stretch the radius in the trailing direction.
+    // We scale the "along" component so the back of the blob is further in
+    // field-space (larger apparent radius) and the front is slightly tighter.
+    // The perpendicular component is unchanged — no ellipse, just a lean.
+    float warpScale = 1.0 - squishAmt * sign(along) * 0.55;
+    warpScale = clamp(warpScale, 0.55, 1.45);
+
+    vec2 perp = offset - along * dir;
+    vec2 warped = perp + dir * (along * warpScale);
+
+    return wyvill(dot(warped, warped), R);
+}
+
 float field(vec2 p) {
     float f = 0.0;
     for (int i = 0; i < 25; i++) {
         if (i >= blobCount) break;
-        float dx = p.x - blobs[i].x;
-        float dy = p.y - blobs[i].y;
-        f += wyvill(dx*dx + dy*dy, radii[i] * 2.8);
+        vec2 offset = p - blobs[i];
+        f += squishKernel(offset, radii[i] * 2.8, velocities[i]);
     }
     return f;
 }
@@ -63,7 +104,6 @@ void main() {
 
     float ambient    = 0.08;
     float diffuse    = ambient + (1.0 - ambient) * wrapDiff;
-    // FIX 1: glowMult reduced from 1.8 to 1.45 — same glow, ~20% less intense
     float glowMult   = 1.0 + 1.45 * sss * (0.5 + 0.5 * thickness);
     float totalLight = diffuse * glowMult;
 
@@ -77,11 +117,10 @@ void main() {
 
     vec3 rimColor = mix(colorWaxEdge, colorWaxHot, heat * 0.9);
     col += rimColor * fresnel * (0.2 + heat * 0.7) * 1.1;
-
     col += colorWaxHot * edgeMask * heat * 0.18;
 
-    vec2  rawGrad   = vec2(gx, -gy);
-    vec2  fillDir2D = normalize(vec2(-0.7, 0.7));
+    vec2  rawGrad    = vec2(gx, -gy);
+    vec2  fillDir2D  = normalize(vec2(-0.7, 0.7));
     float fillFacing = length(rawGrad) > 0.001
         ? dot(normalize(rawGrad), fillDir2D) * 0.5 + 0.5
         : 0.5;
@@ -101,8 +140,6 @@ void main() {
     col += colorWaxEdge * spec2 * 0.06 * fresnel;
 
     col = col / (col + 0.55) * 1.55;
-
-    // FIX 2: fog only shifts color, alpha stays hard — no ghost outlines
     col = mix(col, colorFogBlend, fogAmount);
     gl_FragColor = vec4(col, alpha);
 }

@@ -13,10 +13,7 @@ export function startLoop(
     const { scene, camera, renderer } = sceneContext;
     let lastTime = performance.now();
 
-    const bloom = new BloomPass(
-        window.innerWidth,
-        window.innerHeight,
-    );
+    const bloom = new BloomPass(window.innerWidth, window.innerHeight);
 
     function animate(currentTime: number) {
         requestAnimationFrame(animate);
@@ -36,11 +33,12 @@ export function startLoop(
             blobSystem.update(dt, t, aspect);
 
             const material = materials[index];
-            material.uniforms.blobs.value     = blobSystem.getSeedPositions();
-            material.uniforms.radii.value     = blobSystem.getSeedRadii();
-            material.uniforms.blobCount.value = blobSystem.getSeedCount();
-            material.uniforms.time.value      = t;
-            material.uniforms.aspect.value    = aspect;
+            material.uniforms.blobs.value      = blobSystem.getSeedPositions();
+            material.uniforms.radii.value      = blobSystem.getSeedRadii();
+            material.uniforms.velocities.value = blobSystem.getSeedVelocities();
+            material.uniforms.blobCount.value  = blobSystem.getSeedCount();
+            material.uniforms.time.value       = t;
+            material.uniforms.aspect.value     = aspect;
         });
 
         bloom.render(renderer, scene, camera);
@@ -48,7 +46,6 @@ export function startLoop(
 
     requestAnimationFrame(animate);
 
-    // Return a resize callback so main.ts owns all resize logic in one place
     return {
         onResize: (w: number, h: number) => {
             renderer.setSize(w, h);

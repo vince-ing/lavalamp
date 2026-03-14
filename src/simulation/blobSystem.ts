@@ -5,17 +5,19 @@ import { MAX_BLOBS, LAMP_HEIGHT } from '../core/constants';
 
 export class BlobSystem {
     blobs: Blob[];
-    private seedPos: Float32Array;
-    private seedRad: Float32Array;
+    private seedPos:  Float32Array;
+    private seedRad:  Float32Array;
+    private seedVel:  Float32Array;   // vx, vy per blob — used by shader for squish
 
     constructor(count: number) {
         const w = window.innerWidth || 1;
         const h = window.innerHeight || 1;
         const aspect = w / h;
 
-        this.blobs   = spawnBlobs(count, aspect);
-        this.seedPos = new Float32Array(MAX_BLOBS * 2);
-        this.seedRad = new Float32Array(MAX_BLOBS);
+        this.blobs    = spawnBlobs(count, aspect);
+        this.seedPos  = new Float32Array(MAX_BLOBS * 2);
+        this.seedRad  = new Float32Array(MAX_BLOBS);
+        this.seedVel  = new Float32Array(MAX_BLOBS * 2);
     }
 
     update(dt: number, time: number, aspect: number): void {
@@ -47,17 +49,22 @@ export class BlobSystem {
             this.seedPos[i * 2]     = b.position.x + wx;
             this.seedPos[i * 2 + 1] = b.position.y + wy;
             this.seedRad[i]         = b.radius;
+            this.seedVel[i * 2]     = b.velocity.x;
+            this.seedVel[i * 2 + 1] = b.velocity.y;
         }
 
         for (let i = this.blobs.length; i < MAX_BLOBS; i++) {
             this.seedPos[i * 2]     = -9999;
             this.seedPos[i * 2 + 1] = -9999;
             this.seedRad[i]         = 0;
+            this.seedVel[i * 2]     = 0;
+            this.seedVel[i * 2 + 1] = 0;
         }
     }
 
     getSeedPositions() { return this.seedPos; }
     getSeedRadii()     { return this.seedRad; }
+    getSeedVelocities(){ return this.seedVel; }
     getSeedCount()     { return this.blobs.length; }
     getBlobs()         { return this.blobs; }
 }

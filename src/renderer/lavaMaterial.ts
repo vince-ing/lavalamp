@@ -17,6 +17,7 @@ export function createLavaMaterial(layer: LayerType = 'middle'): THREE.ShaderMat
         uniforms: {
             blobs:              { value: new Float32Array(MAX_BLOBS * 2) },
             radii:              { value: new Float32Array(MAX_BLOBS) },
+            velocities:         { value: new Float32Array(MAX_BLOBS * 2) },
             blobCount:          { value: 0 },
             threshold:          { value: 0.2 },
             time:               { value: 0 },
