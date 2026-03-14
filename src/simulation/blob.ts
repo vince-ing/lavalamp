@@ -13,7 +13,6 @@ export function makeBlob(cx: number, cy: number, radius: number, temp: number): 
         noisePhaseX: Math.random() * Math.PI * 2,
         noisePhaseY: Math.random() * Math.PI * 2,
         noiseSpeed:  0.3 + Math.random() * 0.4,
-        // Amp is proportional to radius so large blobs wobble more
         noiseAmp:    radius * (0.12 + Math.random() * 0.10),
     };
 }
@@ -34,9 +33,9 @@ export function spawnBlobs(count: number, aspect: number): Blob[] {
 
         const r = Math.random();
         let radius: number;
-        if      (r < 0.35) radius = 0.10 + Math.random() * 0.08; // small
-        else if (r < 0.75) radius = 0.18 + Math.random() * 0.12; // medium
-        else               radius = 0.30 + Math.random() * 0.12; // large
+        if      (r < 0.35) radius = 0.10 + Math.random() * 0.08;
+        else if (r < 0.75) radius = 0.18 + Math.random() * 0.12;
+        else               radius = 0.30 + Math.random() * 0.12;
 
         blobs.push(makeBlob(cx, cy, radius, (1 - cy / LAMP_HEIGHT) * 0.9 + Math.random() * 0.4));
     }

@@ -6,7 +6,6 @@ export interface Blob {
     velocity: { x: number; y: number };
     temperature: number;
     radius: number;
-    // Unique noise phase offsets so each blob breathes differently
     noisePhaseX: number;
     noisePhaseY: number;
     noiseSpeed:  number;

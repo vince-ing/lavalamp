@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SceneContext } from '../core/types';
 import { BlobSystem } from '../simulation/blobSystem';
 import { InputController } from '../interaction/inputController';
+import { BloomPass } from '../renderer/bloomPass';
 
 export function startLoop(
     sceneContext: SceneContext,
@@ -12,14 +13,25 @@ export function startLoop(
     const { scene, camera, renderer } = sceneContext;
     let lastTime = performance.now();
 
+    const bloom = new BloomPass(
+        renderer.domElement.width  || window.innerWidth,
+        renderer.domElement.height || window.innerHeight,
+    );
+
+    // Keep bloom targets in sync when window is resized
+    window.addEventListener('resize', () => {
+        const w = renderer.domElement.width  || window.innerWidth;
+        const h = renderer.domElement.height || window.innerHeight;
+        bloom.resize(w, h);
+    });
+
     function animate(currentTime: number) {
         requestAnimationFrame(animate);
         const dt = Math.min((currentTime - lastTime) / 1000, 0.04);
         lastTime = currentTime;
         const t = currentTime / 1000;
 
-        // Fallback to 1 to prevent NaN corruption if DOM layout is delayed
-        const width  = renderer.domElement.width || 1;
+        const width  = renderer.domElement.width  || 1;
         const height = renderer.domElement.height || 1;
         const aspect = width / height;
 
@@ -38,7 +50,8 @@ export function startLoop(
             material.uniforms.aspect.value    = aspect;
         });
 
-        renderer.render(scene, camera);
+        // Bloom pass: scene → blur → composite → canvas
+        bloom.render(renderer, scene, camera);
     }
 
     requestAnimationFrame(animate);

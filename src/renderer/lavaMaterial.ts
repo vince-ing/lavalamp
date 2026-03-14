@@ -7,18 +7,12 @@ import fragmentShader from '../shaders/metaball.frag?raw';
 export type LayerType = 'front' | 'middle' | 'back';
 
 const fogMap: Record<LayerType, number> = {
-    front:  0.0,   // no fog
-    middle: 0.27,  // slight haze
-    back:   0.40,  // strong atmospheric fade toward background
+    front:  0.0,
+    middle: 0.27,
+    back:   0.40,
 };
 
 export function createLavaMaterial(layer: LayerType = 'middle'): THREE.ShaderMaterial {
-    const brightnessMap: Record<LayerType, number> = {
-        front:  1.15,
-        middle: 0.85,
-        back:   0.55,
-    };
-
     return new THREE.ShaderMaterial({
         uniforms: {
             blobs:              { value: new Float32Array(MAX_BLOBS * 2) },
@@ -33,8 +27,8 @@ export function createLavaMaterial(layer: LayerType = 'middle'): THREE.ShaderMat
             colorWaxCore:       { value: SHADER_COLORS.waxCore },
             colorFillLight:     { value: SHADER_COLORS.fillLight },
             fillLightStrength:  { value: FILL_LIGHT_STRENGTH },
-            colorFogBlend:   { value: SHADER_COLORS.fluidBottom },  // or fluidTop — whichever bg color is dominant
-            fogAmount:       { value: fogMap[layer] },
+            colorFogBlend:      { value: SHADER_COLORS.fluidBottom },
+            fogAmount:          { value: fogMap[layer] },
         },
         vertexShader,
         fragmentShader,

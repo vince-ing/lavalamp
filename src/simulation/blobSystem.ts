@@ -9,11 +9,10 @@ export class BlobSystem {
     private seedRad: Float32Array;
 
     constructor(count: number) {
-        // Fallback to 1 to avoid NaN initial bounds
         const w = window.innerWidth || 1;
         const h = window.innerHeight || 1;
         const aspect = w / h;
-        
+
         this.blobs   = spawnBlobs(count, aspect);
         this.seedPos = new Float32Array(MAX_BLOBS * 2);
         this.seedRad = new Float32Array(MAX_BLOBS);

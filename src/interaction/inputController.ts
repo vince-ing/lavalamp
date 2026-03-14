@@ -1,7 +1,6 @@
 import { BlobSystem } from '../simulation/blobSystem';
 import { LAMP_HEIGHT } from '../core/constants';
 
-// Max speed the mouse can push a blob to
 const MAX_INTERACTION_SPEED = 2.2;
 
 export class InputController {
@@ -36,9 +35,8 @@ export class InputController {
             if (dist < reach && dist > 0.001) {
                 const nx = dx / dist;
                 const ny = dy / dist;
-                // Force tapers off quadratically toward edge of reach
                 const t = 1 - dist / reach;
-                const str = t * t * 1.6; // snappier than before but still smooth
+                const str = t * t * 1.6;
 
                 if (this.leftDown) {
                     b.velocity.x -= nx * str;
@@ -49,7 +47,6 @@ export class InputController {
                     b.velocity.y += ny * str * 1.4;
                 }
 
-                // Hard cap on velocity so no blob ever launches off screen
                 const speed = Math.sqrt(b.velocity.x**2 + b.velocity.y**2);
                 if (speed > MAX_INTERACTION_SPEED) {
                     b.velocity.x = (b.velocity.x / speed) * MAX_INTERACTION_SPEED;
