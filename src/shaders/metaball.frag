@@ -4,6 +4,13 @@ uniform int blobCount;
 uniform float threshold;
 uniform float time;
 uniform float aspect;
+
+// New configuration uniforms
+uniform vec3 colorFluidTop;
+uniform vec3 colorFluidBottom;
+uniform vec3 colorWaxEdge;
+uniform vec3 colorWaxCore;
+
 varying vec2 vUv;
 
 float wyvill(float d2, float R) {
@@ -41,8 +48,11 @@ void main() {
     float thickness = smoothstep(threshold, threshold * 4.5, f);
     float thinness  = 1.0 - thickness;
 
+    // ── Fluid Environment ────────────────────────────────────────────────────
+    // Approximate the CSS gradient by mapping vUv.y (0.0 is bottom, 1.0 is top)
+    vec3 fluidColor = mix(colorFluidBottom, colorFluidTop, smoothstep(0.0, 0.6, vUv.y));
+
     // ── Lights ───────────────────────────────────────────────────────────────
-    // ADJUSTMENT: Reduced Z from 0.6 to 0.2 to point more directly up at the bottom
     vec3 bottomLightDir = normalize(vec3(0.0, -1.0, 0.2)); 
     vec3 keyLightDir = normalize(vec3(-0.5, 0.5, 0.8));    
 
@@ -55,19 +65,23 @@ void main() {
     // ── Base Color & SSS ─────────────────────────────────────────────────────
     vec3 col = vec3(0.0);
     
-    vec3 sssColor = vec3(0.95, 0.35, 0.05); 
-    vec3 coreColor = vec3(0.98, 0.65, 0.10); 
+    // Mix the config edge color slightly with the fluid color for ambient absorption
+    vec3 sssColor = mix(colorWaxEdge, fluidColor, 0.35); 
+    vec3 coreColor = colorWaxCore; 
     
     float transmission = pow(thinness, 1.5);
     
     vec3 blobBaseColor = mix(sssColor, coreColor, thickness * bottomWrapDiff);
     
-    // ADJUSTMENT: Increased the bottom wrap intensity from 1.4 to 2.2
     col += blobBaseColor * bottomWrapDiff * 1.7;
-    col += vec3(0.8, 0.2, 0.1) * keyWrapDiff * 0.3;
-    col += vec3(1.0, 0.6, 0.1) * fresnel * (transmission * 0.8 + 0.2) * 1.2;
+    
+    // Fill light represents ambient light scattering through the fluid
+    col += fluidColor * keyWrapDiff * 0.4;
+    
+    // Edge Rim / SSS Bleed - Tinted by the fluid color
+    vec3 rimColor = mix(vec3(1.0, 0.6, 0.1), fluidColor, 0.4);
+    col += rimColor * fresnel * (transmission * 0.8 + 0.2) * 1.2;
 
-    // ADJUSTMENT: Increased the maximum vertical heat multiplier from 1.3 to 2.5
     float verticalHeat = 1.0 - vUv.y;
     col *= mix(0.65, 1.8, verticalHeat);
 
@@ -75,7 +89,8 @@ void main() {
     float topFace = smoothstep(0.1, 0.9, normal.y);
     float topShadow = topFace * (1.0 - fresnel * 0.6); 
     
-    vec3 darkTint = vec3(0.25, 0.02, 0.05); 
+    // The shadowed top is illuminated by the deep fluid, tinting the shadow
+    vec3 darkTint = mix(vec3(0.25, 0.02, 0.05), fluidColor, 0.65); 
     col = mix(col, darkTint, topShadow * 0.7 * (0.3 + 0.7 * vUv.y));
 
     // ── Specular (Waxy) ──────────────────────────────────────────────────────
@@ -88,7 +103,10 @@ void main() {
     float specAtten = mix(0.1, 1.0, thickness);
     
     col += vec3(1.0, 0.8, 0.6) * specBottom * 0.25 * specAtten;
-    col += vec3(1.0, 0.7, 0.5) * specKey * 0.15 * specAtten;
+    
+    // Ambient specular highlights tinted slightly by the environment
+    vec3 keySpecColor = mix(vec3(1.0, 0.7, 0.5), fluidColor, 0.3);
+    col += keySpecColor * specKey * 0.15 * specAtten;
 
     col = clamp(col, 0.0, 1.0);
     gl_FragColor = vec4(col, alpha);

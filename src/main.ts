@@ -1,3 +1,6 @@
+// Add THREE and PALETTE to your imports in src/main.ts
+import * as THREE from 'three';
+import { PALETTE } from './core/config';
 import { createLavaMaterial } from './renderer/lavaMaterial';
 import { createScene } from './renderer/scene';
 import { BlobSystem } from './simulation/blobSystem';
@@ -6,7 +9,37 @@ import { startLoop } from './animation/animationLoop';
 import { DEFAULT_BLOB_COUNT } from './core/constants';
 import './style.css';
 
+function applyDynamicGradient() {
+    const colorTop = new THREE.Color(PALETTE.fluidTop);
+    const colorBottom = new THREE.Color(PALETTE.fluidBottom);
+    
+    // Hold the dark color until 75%, then add stops for the bottom 25%
+    const stops = [0, 75, 80, 85, 90, 95, 98, 100];
+    
+    const gradientColors = stops.map(pct => {
+        // Keep it completely dark top color for the first 75%
+        if (pct <= 60) {
+            return `${colorTop.getStyle()} ${pct}%`;
+        }
+        
+        // Calculate an interpolation factor from 0 to 1 for the remaining 25%
+        let t = (pct - 60) / 40;
+        
+        // Apply a steeper easing curve (2.5) to keep it darker longer 
+        // before quickly ramping up to the bright bottom color.
+        t = Math.pow(t, 1.7);
+        
+        const lerpedColor = colorTop.clone().lerp(colorBottom, t);
+        return `${lerpedColor.getStyle()} ${pct}%`;
+    });
+
+    document.body.style.background = `linear-gradient(to bottom, ${gradientColors.join(', ')})`;
+}
+
 function bootstrap() {
+    // Generate and apply the background gradient dynamically
+    applyDynamicGradient();
+
     const material     = createLavaMaterial();
     const sceneContext = createScene(material);
     document.body.appendChild(sceneContext.renderer.domElement);
