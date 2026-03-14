@@ -8,6 +8,20 @@ import { startLoop } from './animation/animationLoop';
 import { ColorMenu, ColorState } from './ui/colorMenu';
 import './style.css';
 
+function isMobile(): boolean {
+    return window.matchMedia('(pointer: coarse)').matches;
+}
+
+function scaledCounts(): typeof LAYER_BLOB_COUNTS {
+    if (!isMobile()) return { ...LAYER_BLOB_COUNTS };
+    const scale = 0.6;  // 40% fewer blobs on mobile
+    return {
+        back:   Math.max(1, Math.round(LAYER_BLOB_COUNTS.back   * scale)),
+        middle: Math.max(1, Math.round(LAYER_BLOB_COUNTS.middle * scale)),
+        front:  Math.max(1, Math.round(LAYER_BLOB_COUNTS.front  * scale)),
+    };
+}
+
 function buildGradient(top: string, bottom: string): string {
     const colorTop    = new THREE.Color(top);
     const colorBottom = new THREE.Color(bottom);
@@ -39,15 +53,15 @@ function bootstrap() {
     const canvas = sceneContext.renderer.domElement;
     document.body.appendChild(canvas);
 
-    const sysBack  = new BlobSystem(LAYER_BLOB_COUNTS.back);
-    const sysMid   = new BlobSystem(LAYER_BLOB_COUNTS.middle);
-    const sysFront = new BlobSystem(LAYER_BLOB_COUNTS.front);
+    const counts = scaledCounts();
+    const sysBack  = new BlobSystem(counts.back);
+    const sysMid   = new BlobSystem(counts.middle);
+    const sysFront = new BlobSystem(counts.front);
     const blobSystems = [sysBack, sysMid, sysFront];
 
     const input = new InputController(canvas);
     const { onResize } = startLoop(sceneContext, blobSystems, materials, input);
 
-    // Color menu — updates shader uniforms + background live
     const menu = new ColorMenu((state: ColorState) => {
         const waxEdge     = new THREE.Color(state.waxEdge);
         const waxCore     = new THREE.Color(state.waxCore);
