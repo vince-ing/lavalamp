@@ -52,7 +52,7 @@ export class BloomPass {
             uniforms: {
                 tBase:        { value: this.rtScene.texture },
                 tBloom:       { value: this.rtBlurV.texture },
-                bloomStrength: { value: 0.55 },
+                bloomStrength: { value: 0.38 },
             },
             vertexShader:   compositeVert,
             fragmentShader: compositeFrag,
