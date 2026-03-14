@@ -13,7 +13,6 @@ export function createLavaMaterial(): THREE.ShaderMaterial {
             threshold:        { value: 0.2 },
             time:             { value: 0 },
             aspect:           { value: window.innerWidth / window.innerHeight },
-            // Add the color uniforms here
             colorFluidTop:    { value: SHADER_COLORS.fluidTop },
             colorFluidBottom: { value: SHADER_COLORS.fluidBottom },
             colorWaxEdge:     { value: SHADER_COLORS.waxEdge },

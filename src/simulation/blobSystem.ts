@@ -1,6 +1,6 @@
 import { Blob } from '../core/types';
 import { spawnBlobs } from './blob';
-import { updateBlob } from './physics';
+import { updateBlob, applyRepulsion } from './physics';
 import { MAX_BLOBS, LAMP_HEIGHT } from '../core/constants';
 
 export class BlobSystem {
@@ -11,7 +11,6 @@ export class BlobSystem {
     constructor(count: number) {
         const aspect = window.innerWidth / window.innerHeight;
         this.blobs   = spawnBlobs(count, aspect);
-        // One entry per blob — no satellites
         this.seedPos = new Float32Array(MAX_BLOBS * 2);
         this.seedRad = new Float32Array(MAX_BLOBS);
     }
@@ -20,8 +19,17 @@ export class BlobSystem {
         const hw = (LAMP_HEIGHT * aspect) / 2;
         const clampedDt = Math.min(dt, 0.04);
 
+        // Per-blob physics
         for (const b of this.blobs) {
             updateBlob(b, clampedDt, time);
+        }
+
+        // Pairwise repulsion (separate pass so forces don't depend on update order)
+        applyRepulsion(this.blobs, clampedDt);
+
+        // Integrate + boundary clamp + damping
+        // Use entries() to avoid O(n²) indexOf inside the loop
+        for (const [i, b] of this.blobs.entries()) {
             b.position.x += b.velocity.x * clampedDt;
             b.position.y += b.velocity.y * clampedDt;
 
@@ -34,19 +42,16 @@ export class BlobSystem {
             b.velocity.x *= 0.94;
             b.velocity.y *= 0.94;
 
-            // Noise wobble: gently shift the rendered position each frame.
-            // This is ONLY applied to the shader position, not the physics position,
-            // so physics stays stable while the visual surface breathes organically.
+            // Visual wobble applied only to the shader position — physics stays stable
             const wx = Math.sin(time * b.noiseSpeed       + b.noisePhaseX) * b.noiseAmp;
             const wy = Math.cos(time * b.noiseSpeed * 1.3 + b.noisePhaseY) * b.noiseAmp;
 
-            const i = this.blobs.indexOf(b);
             this.seedPos[i * 2]     = b.position.x + wx;
             this.seedPos[i * 2 + 1] = b.position.y + wy;
             this.seedRad[i]         = b.radius;
         }
 
-        // Zero unused
+        // Zero unused slots
         for (let i = this.blobs.length; i < MAX_BLOBS; i++) {
             this.seedPos[i * 2]     = -9999;
             this.seedPos[i * 2 + 1] = -9999;

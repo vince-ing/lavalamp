@@ -17,7 +17,11 @@ export function startLoop(
         const dt = Math.min((currentTime - lastTime) / 1000, 0.04);
         lastTime = currentTime;
         const t = currentTime / 1000;
-        const aspect = window.innerWidth / window.innerHeight;
+
+        // Derive aspect from the renderer's actual pixel dimensions so physics
+        // and shader stay in sync even if a resize event is still pending.
+        const { width, height } = renderer.domElement;
+        const aspect = width / height;
 
         if (inputController) inputController.update(blobSystem);
 
