@@ -12,11 +12,11 @@ export function createLavaMaterial(layer: LayerType = 'middle'): THREE.ShaderMat
     
     // Tint the layers
     if (layer === 'front') {
-        coreColor.lerp(new THREE.Color(0xffffff), 0.35);
-        edgeColor.lerp(new THREE.Color(0xffffff), 0.35);
+        coreColor.lerp(new THREE.Color('#ffffff'), 0.35);
+        edgeColor.lerp(new THREE.Color('#ffffff'), 0.35);
     } else if (layer === 'back') {
-        coreColor.lerp(new THREE.Color(0x000000), 0.55);
-        edgeColor.lerp(new THREE.Color(0x000000), 0.55);
+        coreColor.lerp(new THREE.Color('#000000'), 0.55);
+        edgeColor.lerp(new THREE.Color('#000000'), 0.55);
     }
 
     return new THREE.ShaderMaterial({
@@ -26,7 +26,7 @@ export function createLavaMaterial(layer: LayerType = 'middle'): THREE.ShaderMat
             blobCount:          { value: 0 },
             threshold:          { value: 0.2 },
             time:               { value: 0 },
-            aspect:             { value: window.innerWidth / window.innerHeight },
+            aspect:             { value: 1.0 }, // Initialize safely, overridden in loop
             colorFluidTop:      { value: SHADER_COLORS.fluidTop },
             colorFluidBottom:   { value: SHADER_COLORS.fluidBottom },
             colorWaxEdge:       { value: edgeColor },
@@ -38,5 +38,6 @@ export function createLavaMaterial(layer: LayerType = 'middle'): THREE.ShaderMat
         fragmentShader,
         transparent: true,
         depthWrite: false,
+        depthTest: false, // Forces painter's algorithm bypassing depth collisions entirely
     });
 }

@@ -18,10 +18,11 @@ export function startLoop(
         lastTime = currentTime;
         const t = currentTime / 1000;
 
-        const { width, height } = renderer.domElement;
+        // Fallback to 1 to prevent NaN corruption if DOM layout is delayed
+        const width  = renderer.domElement.width || 1;
+        const height = renderer.domElement.height || 1;
         const aspect = width / height;
 
-        // Apply input only to the frontmost layer (the last one in the array)
         if (inputController && blobSystems.length > 0) {
             inputController.update(blobSystems[blobSystems.length - 1]);
         }

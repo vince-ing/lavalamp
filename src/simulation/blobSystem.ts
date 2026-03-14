@@ -9,7 +9,11 @@ export class BlobSystem {
     private seedRad: Float32Array;
 
     constructor(count: number) {
-        const aspect = window.innerWidth / window.innerHeight;
+        // Fallback to 1 to avoid NaN initial bounds
+        const w = window.innerWidth || 1;
+        const h = window.innerHeight || 1;
+        const aspect = w / h;
+        
         this.blobs   = spawnBlobs(count, aspect);
         this.seedPos = new Float32Array(MAX_BLOBS * 2);
         this.seedRad = new Float32Array(MAX_BLOBS);
@@ -19,16 +23,12 @@ export class BlobSystem {
         const hw = (LAMP_HEIGHT * aspect) / 2;
         const clampedDt = Math.min(dt, 0.04);
 
-        // Per-blob physics
         for (const b of this.blobs) {
             updateBlob(b, clampedDt, time);
         }
 
-        // Pairwise repulsion (separate pass so forces don't depend on update order)
         applyRepulsion(this.blobs, clampedDt);
 
-        // Integrate + boundary clamp + damping
-        // Use entries() to avoid O(n²) indexOf inside the loop
         for (const [i, b] of this.blobs.entries()) {
             b.position.x += b.velocity.x * clampedDt;
             b.position.y += b.velocity.y * clampedDt;
@@ -42,7 +42,6 @@ export class BlobSystem {
             b.velocity.x *= 0.94;
             b.velocity.y *= 0.94;
 
-            // Visual wobble applied only to the shader position — physics stays stable
             const wx = Math.sin(time * b.noiseSpeed       + b.noisePhaseX) * b.noiseAmp;
             const wy = Math.cos(time * b.noiseSpeed * 1.3 + b.noisePhaseY) * b.noiseAmp;
 
@@ -51,7 +50,6 @@ export class BlobSystem {
             this.seedRad[i]         = b.radius;
         }
 
-        // Zero unused slots
         for (let i = this.blobs.length; i < MAX_BLOBS; i++) {
             this.seedPos[i * 2]     = -9999;
             this.seedPos[i * 2 + 1] = -9999;
