@@ -9,21 +9,14 @@ export function startLoop(
     blobSystems: BlobSystem[],
     materials: THREE.ShaderMaterial[],
     inputController?: InputController
-): void {
+): { onResize: (w: number, h: number) => void } {
     const { scene, camera, renderer } = sceneContext;
     let lastTime = performance.now();
 
     const bloom = new BloomPass(
-        renderer.domElement.width  || window.innerWidth,
-        renderer.domElement.height || window.innerHeight,
+        window.innerWidth,
+        window.innerHeight,
     );
-
-    // Keep bloom targets in sync when window is resized
-    window.addEventListener('resize', () => {
-        const w = renderer.domElement.width  || window.innerWidth;
-        const h = renderer.domElement.height || window.innerHeight;
-        bloom.resize(w, h);
-    });
 
     function animate(currentTime: number) {
         requestAnimationFrame(animate);
@@ -50,9 +43,16 @@ export function startLoop(
             material.uniforms.aspect.value    = aspect;
         });
 
-        // Bloom pass: scene → blur → composite → canvas
         bloom.render(renderer, scene, camera);
     }
 
     requestAnimationFrame(animate);
+
+    // Return a resize callback so main.ts owns all resize logic in one place
+    return {
+        onResize: (w: number, h: number) => {
+            renderer.setSize(w, h);
+            bloom.resize(w, h);
+        }
+    };
 }

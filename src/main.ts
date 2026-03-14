@@ -20,34 +20,52 @@ function applyDynamicGradient() {
         return `${lerpedColor.getStyle()} ${pct}%`;
     });
 
-    document.body.style.background = `linear-gradient(to bottom, ${gradientColors.join(', ')})`;
+    const grad = `linear-gradient(to bottom, ${gradientColors.join(', ')})`;
+    document.body.style.background = grad;
+    document.documentElement.style.background = grad;
 }
 
 function bootstrap() {
     applyDynamicGradient();
 
-    // Create 3 distinct layer materials
     const matBack  = createLavaMaterial('back');
     const matMid   = createLavaMaterial('middle');
     const matFront = createLavaMaterial('front');
     const materials = [matBack, matMid, matFront];
 
     const sceneContext = createScene(materials);
-    document.body.appendChild(sceneContext.renderer.domElement);
+    const canvas = sceneContext.renderer.domElement;
+    document.body.appendChild(canvas);
 
-    window.addEventListener('resize', () => {
-        sceneContext.renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-
-    // Create 3 independent physics systems (adjust counts for depth parallax effect)
     const sysBack  = new BlobSystem(LAYER_BLOB_COUNTS.back);
     const sysMid   = new BlobSystem(LAYER_BLOB_COUNTS.middle);
     const sysFront = new BlobSystem(LAYER_BLOB_COUNTS.front);
     const blobSystems = [sysBack, sysMid, sysFront];
 
-    const input = new InputController(sceneContext.renderer.domElement);
-    
-    startLoop(sceneContext, blobSystems, materials, input);
+    const input = new InputController(canvas);
+    const { onResize } = startLoop(sceneContext, blobSystems, materials, input);
+
+    const handleResize = () => {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        console.log('resize:', w, h);
+        onResize(w, h);
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    // fullscreenchange fires after layout is complete — reliable source of truth
+    document.addEventListener('fullscreenchange', handleResize);
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key !== 'f' && e.key !== 'F') return;
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen()
+                .catch(err => console.error('fullscreen failed:', err));
+        } else {
+            document.exitFullscreen();
+        }
+    });
 }
 
 bootstrap();
