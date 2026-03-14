@@ -9,6 +9,8 @@ uniform vec3 colorFluidTop;
 uniform vec3 colorFluidBottom;
 uniform vec3 colorWaxEdge;
 uniform vec3 colorWaxCore;
+uniform vec3 colorFillLight;
+uniform float fillLightStrength;
 
 varying vec2 vUv;
 
@@ -47,51 +49,55 @@ void main() {
     float NdotV     = max(0.0, dot(normal, viewDir));
     float fresnel   = pow(1.0 - NdotV, 2.5);
 
-    // ── Vertical SSS: lamp proximity ──────────────────────────────────────
-    float heat = 1.0 - vUv.y;              // 1.0 bottom, 0.0 top
-    float sss  = 0.28 + 0.72 * heat * heat; // 0.28 top → 1.0 bottom
+    // Edge mask from raw gradient: when gx/gy are large the surface tilts
+    // sharply away — this is a more reliable silhouette detector than fresnel
+    // when the normal Z bias suppresses NdotV variation.
+    float gradMag  = length(vec2(gx, gy));
+    // Normalise: field gradient is large near the isosurface, taper off inside.
+    // edgeMask peaks at ~1 on the silhouette and falls off inward.
+    float edgeMask = clamp(gradMag * 2.5, 0.0, 1.0);
 
-    // ── Wrap diffuse from lamp below ──────────────────────────────────────
-    // wrap=0.55 so shadow terminator curves around the sphere form.
-    // Low ambient (0.08) preserves dramatic contrast between lit/shadow.
+    // ── Vertical SSS: lamp proximity ──────────────────────────────────────
+    float heat = 1.0 - vUv.y;
+    float sss  = 0.28 + 0.72 * heat * heat;
+
+    // ── Primary lamp: wrap diffuse from below ─────────────────────────────
     vec3  lampDir  = normalize(vec3(0.0, -1.0, 0.2));
     float wrap     = 0.55;
-    float NdotL    = dot(normal, lampDir);
-    float wrapDiff = max(0.0, (NdotL + wrap) / (1.0 + wrap));
+    float wrapDiff = max(0.0, (dot(normal, lampDir) + wrap) / (1.0 + wrap));
 
-    // Ambient is intentionally LOW — contrast is what makes it look 3D.
-    // The SSS glow will lift the shadow side warmly without flattening it.
-    float ambient  = 0.08;
-    float diffuse  = ambient + (1.0 - ambient) * wrapDiff;
+    float ambient = 0.08;
+    float diffuse = ambient + (1.0 - ambient) * wrapDiff;
 
-    // ── SSS volumetric glow ───────────────────────────────────────────────
-    // This is the "incandescent" look. It is MULTIPLIED by sss not added
-    // uniformly, so it concentrates near the lamp and inside thick wax.
-    // It lifts the shadow side warmly without blowing out contrast:
-    //   shadow side wrapDiff≈0.1 × glow=1.5 = 0.15  (warm dark orange)
-    //   lit side    wrapDiff≈0.9 × glow=1.5 = 1.35  (bright yellow-orange)
-    // The ratio stays ~9:1 — contrast intact but shadow side glows warmly.
-    float glowMult = 1.0 + 1.8 * sss * (0.5 + 0.5 * thickness);
+    float glowMult   = 1.0 + 1.8 * sss * (0.5 + 0.5 * thickness);
     float totalLight = diffuse * glowMult;
 
     // ── Wax color ─────────────────────────────────────────────────────────
-    // Lit face near lamp → near-white yellow.  Shadow / top → deep orange-red.
     vec3 waxHot  = mix(colorWaxCore, vec3(1.0, 0.97, 0.78), heat * 0.6);
     vec3 waxCool = colorWaxEdge * 0.65;
-    // Drive color from BOTH wrapDiff and sss so lit bottom face is hottest
     float colorT = clamp(wrapDiff * sss * 1.6, 0.0, 1.0);
     vec3 waxBase = mix(waxCool, waxHot, colorT);
 
     vec3 col = waxBase * totalLight;
 
-    // ── SSS rim: backlit warm edge glow ───────────────────────────────────
-    // Fresnel-based rim, modulated by heat so bottom blobs have a hot rim
-    // and top blobs have a subtler one. Purely additive.
+    // ── Primary SSS rim (warm, from lamp below) ───────────────────────────
     vec3 rimColor = mix(colorWaxEdge, colorWaxCore, heat * 0.9);
     col += rimColor * fresnel * (0.2 + heat * 0.7) * 1.1;
 
-    // ── Specular ──────────────────────────────────────────────────────────
-    // Lamp is below — spec lands on the lower portion of each sphere.
+    // ── Fill light: directional rim ───────────────────────────────────────
+    // Uses edgeMask (gradient-based silhouette) instead of fresnel because
+    // the Z=0.4 normal bias keeps NdotV high everywhere, killing fresnel.
+    // Raw gradient direction gives true screen-space tilt for directionality.
+    vec2  rawGrad   = vec2(gx, -gy);
+    vec2  fillDir2D = normalize(vec2(-0.7, 0.7)); // top-left in screen space
+    float fillFacing = length(rawGrad) > 0.001
+        ? dot(normalize(rawGrad), fillDir2D) * 0.5 + 0.5
+        : 0.5;
+    float fillRim   = edgeMask * fillFacing;
+    col += colorFillLight * fillRim * fillLightStrength * 2.5;
+    col += colorFillLight * fillFacing * fillLightStrength * 0.05;
+
+    // ── Specular from primary lamp ────────────────────────────────────────
     vec3  specDir = normalize(vec3(0.1, -0.7, 0.85));
     vec3  hVec    = normalize(specDir + viewDir);
     float spec    = pow(max(0.0, dot(normal, hVec)), 16.0);
