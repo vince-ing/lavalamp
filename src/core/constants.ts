@@ -1,5 +1,4 @@
-export const MAX_BLOBS          = 25;
-export const DEFAULT_BLOB_COUNT = 18;
+export const MAX_BLOBS          = 30;
 
 export const LAMP_HEIGHT = 4;
 export const LAMP_WIDTH  = 2;

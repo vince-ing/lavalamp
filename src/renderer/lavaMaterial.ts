@@ -6,18 +6,18 @@ import fragmentShader from '../shaders/metaball.frag?raw';
 
 export type LayerType = 'front' | 'middle' | 'back';
 
+const fogMap: Record<LayerType, number> = {
+    front:  0.0,   // no fog
+    middle: 0.27,  // slight haze
+    back:   0.40,  // strong atmospheric fade toward background
+};
+
 export function createLavaMaterial(layer: LayerType = 'middle'): THREE.ShaderMaterial {
-    const coreColor = SHADER_COLORS.waxCore.clone();
-    const edgeColor = SHADER_COLORS.waxEdge.clone();
-    
-    // Tint the layers
-    if (layer === 'front') {
-        coreColor.lerp(new THREE.Color('#ffffff'), 0.35);
-        edgeColor.lerp(new THREE.Color('#ffffff'), 0.35);
-    } else if (layer === 'back') {
-        coreColor.lerp(new THREE.Color('#000000'), 0.55);
-        edgeColor.lerp(new THREE.Color('#000000'), 0.55);
-    }
+    const brightnessMap: Record<LayerType, number> = {
+        front:  1.15,
+        middle: 0.85,
+        back:   0.55,
+    };
 
     return new THREE.ShaderMaterial({
         uniforms: {
@@ -26,18 +26,20 @@ export function createLavaMaterial(layer: LayerType = 'middle'): THREE.ShaderMat
             blobCount:          { value: 0 },
             threshold:          { value: 0.2 },
             time:               { value: 0 },
-            aspect:             { value: 1.0 }, // Initialize safely, overridden in loop
+            aspect:             { value: 1.0 },
             colorFluidTop:      { value: SHADER_COLORS.fluidTop },
             colorFluidBottom:   { value: SHADER_COLORS.fluidBottom },
-            colorWaxEdge:       { value: edgeColor },
-            colorWaxCore:       { value: coreColor },
+            colorWaxEdge:       { value: SHADER_COLORS.waxEdge },
+            colorWaxCore:       { value: SHADER_COLORS.waxCore },
             colorFillLight:     { value: SHADER_COLORS.fillLight },
             fillLightStrength:  { value: FILL_LIGHT_STRENGTH },
+            colorFogBlend:   { value: SHADER_COLORS.fluidBottom },  // or fluidTop — whichever bg color is dominant
+            fogAmount:       { value: fogMap[layer] },
         },
         vertexShader,
         fragmentShader,
         transparent: true,
         depthWrite: false,
-        depthTest: false, // Forces painter's algorithm bypassing depth collisions entirely
+        depthTest: false,
     });
 }

@@ -1,11 +1,10 @@
 import * as THREE from 'three';
-import { PALETTE } from './core/config';
+import { PALETTE, LAYER_BLOB_COUNTS } from './core/config';
 import { createLavaMaterial } from './renderer/lavaMaterial';
 import { createScene } from './renderer/scene';
 import { BlobSystem } from './simulation/blobSystem';
 import { InputController } from './interaction/inputController';
 import { startLoop } from './animation/animationLoop';
-import { DEFAULT_BLOB_COUNT } from './core/constants';
 import './style.css';
 
 function applyDynamicGradient() {
@@ -41,12 +40,14 @@ function bootstrap() {
     });
 
     // Create 3 independent physics systems (adjust counts for depth parallax effect)
-    const sysBack  = new BlobSystem(DEFAULT_BLOB_COUNT + 4);
-    const sysMid   = new BlobSystem(DEFAULT_BLOB_COUNT);
-    const sysFront = new BlobSystem(DEFAULT_BLOB_COUNT - 4);
+    const sysBack  = new BlobSystem(LAYER_BLOB_COUNTS.back);
+    const sysMid   = new BlobSystem(LAYER_BLOB_COUNTS.middle);
+    const sysFront = new BlobSystem(LAYER_BLOB_COUNTS.front);
     const blobSystems = [sysBack, sysMid, sysFront];
 
     const input = new InputController(sceneContext.renderer.domElement);
     
     startLoop(sceneContext, blobSystems, materials, input);
 }
+
+bootstrap();

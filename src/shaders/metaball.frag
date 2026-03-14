@@ -4,6 +4,8 @@ uniform int blobCount;
 uniform float threshold;
 uniform float time;
 uniform float aspect;
+uniform vec3  colorFogBlend;
+uniform float fogAmount;
 
 uniform vec3 colorFluidTop;
 uniform vec3 colorFluidBottom;
@@ -104,5 +106,6 @@ void main() {
     col += mix(colorWaxCore, vec3(1.0, 0.95, 0.82), 0.5) * spec * 0.28 * thickness;
 
     col = clamp(col, 0.0, 1.0);
-    gl_FragColor = vec4(col, alpha);
+    col = mix(col, colorFogBlend, fogAmount);   // blend toward bg color
+    gl_FragColor = vec4(col, alpha * (1.0 - fogAmount * 0.1));  // also slightly more transparent
 }
