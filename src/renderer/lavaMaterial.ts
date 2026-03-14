@@ -7,9 +7,9 @@ import fragmentShader from '../shaders/metaball.frag?raw';
 export type LayerType = 'front' | 'middle' | 'back';
 
 const fogMap: Record<LayerType, number> = {
-    front:  0.0,
-    middle: 0.27,
-    back:   0.40,
+    front:  0.05,
+    middle: 0.45,
+    back:   0.65,
 };
 
 export function createLavaMaterial(layer: LayerType = 'middle'): THREE.ShaderMaterial {

@@ -36,9 +36,9 @@ export function spawnBlobs(count: number, aspect: number): Blob[] {
 
         const r = Math.random();
         let radius: number;
-        if      (r < 0.35) radius = 0.12 + Math.random() * 0.08;
+        if      (r < 0.35) radius = 0.17 + Math.random() * 0.08;
         else if (r < 0.75) radius = 0.20 + Math.random() * 0.12;
-        else               radius = 0.30 + Math.random() * 0.12;
+        else               radius = 0.26 + Math.random() * 0.12;
 
         blobs.push(makeBlob(cx, cy, radius, (1 - cy / LAMP_HEIGHT) * 0.9 + Math.random() * 0.4));
     }
