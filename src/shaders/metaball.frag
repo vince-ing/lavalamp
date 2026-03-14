@@ -4,7 +4,6 @@ uniform int blobCount;
 uniform float threshold;
 uniform float time;
 uniform float aspect;
-
 varying vec2 vUv;
 
 float wyvill(float d2, float R) {
@@ -33,78 +32,63 @@ void main() {
     if (alpha < 0.01) discard;
 
     float e = 0.014;
-    // Raw gradient — positive Y means field increases going up = top of blob
     float gx = field(p + vec2(e, 0)) - field(p - vec2(e, 0));
     float gy = field(p + vec2(0, e)) - field(p - vec2(0, e));
-    // FLIP Y so normal.y > 0 = surface faces UP (top), normal.y < 0 = faces DOWN (bottom)
-    // The field gradient points INWARD toward blob centers. At the top of a blob,
-    // the center is below, so raw gy is NEGATIVE at the top. Flip it.
-    vec3 normal = normalize(vec3(gx, -gy, 0.22));
+    
+    vec3 normal = normalize(vec3(gx, -gy, 0.35)); 
     vec3 viewDir = vec3(0.0, 0.0, 1.0);
 
-    // Thickness: single blob has f ~ 1.0 at center, threshold ~ 0.2 at edge.
-    // So remap relative to threshold, saturate at modest multiple.
-    // Single blob at its center: f ≈ 1.0, (1.0 - 0.2) / (0.2 * 3.0) = 1.33 → clamp 1.0 ✓
-    // Single blob near edge: f ≈ 0.25, (0.05) / 0.6 = 0.08 → nearly 0 (thin) ✓
-    float thickness = clamp((f - threshold) / (threshold * 3.0), 0.0, 1.0);
+    float thickness = smoothstep(threshold, threshold * 4.5, f);
     float thinness  = 1.0 - thickness;
 
     // ── Lights ───────────────────────────────────────────────────────────────
-    vec3 keyDir = normalize(vec3(-0.4, 0.7, 1.0));   // upper-left warm
-    vec3 rimDir = normalize(vec3( 0.9, 0.2, 0.6));   // right rim cool blue
+    // ADJUSTMENT: Reduced Z from 0.6 to 0.2 to point more directly up at the bottom
+    vec3 bottomLightDir = normalize(vec3(0.0, -1.0, 0.2)); 
+    vec3 keyLightDir = normalize(vec3(-0.5, 0.5, 0.8));    
 
-    float keyDiff = max(0.0, dot(normal, keyDir));
-    float rimDiff = max(0.0, dot(normal, rimDir));
+    float wrap = 0.65;
+    float bottomWrapDiff = max(0.0, (dot(normal, bottomLightDir) + wrap) / (1.0 + wrap));
+    float keyWrapDiff = max(0.0, (dot(normal, keyLightDir) + wrap) / (1.0 + wrap));
 
-    // Bottom lamp: faces DOWN (normal.y < 0) are the underside, directly above the lamp
-    float bottomFace = max(0.0,  normal.y);
-    float topFace    = max(0.0, -normal.y);
+    float fresnel = pow(1.0 - max(0.0, dot(normal, viewDir)), 3.0);
 
-    vec3 lampSpecDir = normalize(vec3(0.1, -1.0, 0.8));
+    // ── Base Color & SSS ─────────────────────────────────────────────────────
+    vec3 col = vec3(0.0);
+    
+    vec3 sssColor = vec3(0.95, 0.35, 0.05); 
+    vec3 coreColor = vec3(0.98, 0.65, 0.10); 
+    
+    float transmission = pow(thinness, 1.5);
+    
+    vec3 blobBaseColor = mix(sssColor, coreColor, thickness * bottomWrapDiff);
+    
+    // ADJUSTMENT: Increased the bottom wrap intensity from 1.4 to 2.2
+    col += blobBaseColor * bottomWrapDiff * 1.7;
+    col += vec3(0.8, 0.2, 0.1) * keyWrapDiff * 0.3;
+    col += vec3(1.0, 0.6, 0.1) * fresnel * (transmission * 0.8 + 0.2) * 1.2;
 
-    // ── Base color ────────────────────────────────────────────────────────────
-    vec3 col = vec3(0.04, 0.00, 0.06);
+    // ADJUSTMENT: Increased the maximum vertical heat multiplier from 1.3 to 2.5
+    float verticalHeat = 1.0 - vUv.y;
+    col *= mix(0.65, 1.8, verticalHeat);
 
-    // Key diffuse: orange-red on upper-left facing surfaces
-    col += vec3(0.80, 0.18, 0.02) * keyDiff * 0.7;
-    col  = mix(col, vec3(1.0, 0.42, 0.02), smoothstep(0.3, 0.9, keyDiff) * 0.6);
+    // ── Top Darkening (3D Aware) ─────────────────────────────────────────────
+    float topFace = smoothstep(0.1, 0.9, normal.y);
+    float topShadow = topFace * (1.0 - fresnel * 0.6); 
+    
+    vec3 darkTint = vec3(0.25, 0.02, 0.05); 
+    col = mix(col, darkTint, topShadow * 0.7 * (0.3 + 0.7 * vUv.y));
 
-    // Rim: blue on right edge
-    col += vec3(0.08, 0.18, 0.85) * rimDiff * 0.45;
-
-    // ── SSS from bottom lamp ──────────────────────────────────────────────────
-    vec3 sssOrange = vec3(1.00, 0.55, 0.05);
-    vec3 sssAmber  = vec3(1.00, 0.72, 0.18);
-
-    // Direct hit on the BOTTOM face (topFace in corrected normals = underside)
-    col += sssOrange * topFace * 1.1;
-
-    // Transmission through thin wax — bleeds everywhere when thin
-    float transmission = thinness * 0.75 + topFace * 0.25;
-    col += sssAmber * transmission * 0.55;
-
-    // Silhouette edge bleed
-    float edgeMask = 1.0 - abs(dot(normal, viewDir));
-    edgeMask = edgeMask * edgeMask * edgeMask;
-    col += sssAmber * edgeMask * (thinness * 0.8 + 0.2) * 0.8;
-
-    // Interior glow in thick merged regions
-    col += vec3(1.0, 0.50, 0.04) * smoothstep(threshold * 2.0, threshold * 5.0, f) * 0.35;
-
-    // ── Top darkening ─────────────────────────────────────────────────────────
-    // Gentle — just a warm shadow tint, not a crush
-    float topDark = smoothstep(0.3, 0.85, bottomFace);
-    vec3 darkColor = vec3(0.22, 0.04, 0.06); // deep warm burgundy
-    col = mix(col, darkColor, topDark * 0.55);
-
-    // ── Specular ──────────────────────────────────────────────────────────────
-    // Broad soft highlights = waxy. Tight bright = metallic. Keep power low.
-    float keySpecW  = pow(max(0.0, dot(normalize(keyDir + viewDir), normal)), 18.0);
-    float rimSpecW  = pow(max(0.0, dot(normalize(rimDir + viewDir), normal)), 14.0);
-    float lampSpecW = pow(max(0.0, dot(normalize(lampSpecDir + viewDir), normal)), 16.0) * topFace;
-    col += vec3(1.00, 0.85, 0.70) * keySpecW  * 0.22;
-    col += vec3(0.55, 0.75, 1.00) * rimSpecW  * 0.18;
-    col += vec3(1.00, 0.92, 0.65) * lampSpecW * 0.45;
+    // ── Specular (Waxy) ──────────────────────────────────────────────────────
+    vec3 halfVectorBottom = normalize(bottomLightDir + viewDir);
+    float specBottom = pow(max(0.0, dot(normal, halfVectorBottom)), 8.0);
+    
+    vec3 halfVectorKey = normalize(keyLightDir + viewDir);
+    float specKey = pow(max(0.0, dot(normal, halfVectorKey)), 6.0);
+    
+    float specAtten = mix(0.1, 1.0, thickness);
+    
+    col += vec3(1.0, 0.8, 0.6) * specBottom * 0.25 * specAtten;
+    col += vec3(1.0, 0.7, 0.5) * specKey * 0.15 * specAtten;
 
     col = clamp(col, 0.0, 1.0);
     gl_FragColor = vec4(col, alpha);
