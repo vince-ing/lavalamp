@@ -5,22 +5,24 @@ import { createScene } from './renderer/scene';
 import { BlobSystem } from './simulation/blobSystem';
 import { InputController } from './interaction/inputController';
 import { startLoop } from './animation/animationLoop';
+import { ColorMenu, ColorState } from './ui/colorMenu';
 import './style.css';
 
-function applyDynamicGradient() {
-    const colorTop    = new THREE.Color(PALETTE.fluidTop);
-    const colorBottom = new THREE.Color(PALETTE.fluidBottom);
-
+function buildGradient(top: string, bottom: string): string {
+    const colorTop    = new THREE.Color(top);
+    const colorBottom = new THREE.Color(bottom);
     const stops = [0, 75, 80, 85, 90, 95, 98, 100];
     const gradientColors = stops.map(pct => {
         if (pct <= 60) return `${colorTop.getStyle()} ${pct}%`;
         let t = (pct - 60) / 40;
         t = Math.pow(t, 1.7);
-        const lerpedColor = colorTop.clone().lerp(colorBottom, t);
-        return `${lerpedColor.getStyle()} ${pct}%`;
+        return `${colorTop.clone().lerp(colorBottom, t).getStyle()} ${pct}%`;
     });
+    return `linear-gradient(to bottom, ${gradientColors.join(', ')})`;
+}
 
-    const grad = `linear-gradient(to bottom, ${gradientColors.join(', ')})`;
+function applyDynamicGradient(top = PALETTE.fluidTop, bottom = PALETTE.fluidBottom) {
+    const grad = buildGradient(top, bottom);
     document.body.style.background = grad;
     document.documentElement.style.background = grad;
 }
@@ -45,25 +47,41 @@ function bootstrap() {
     const input = new InputController(canvas);
     const { onResize } = startLoop(sceneContext, blobSystems, materials, input);
 
-    const handleResize = () => {
-        const w = window.innerWidth;
-        const h = window.innerHeight;
-        console.log('resize:', w, h);
-        onResize(w, h);
-    };
+    // Color menu — updates shader uniforms + background live
+    const menu = new ColorMenu((state: ColorState) => {
+        const waxEdge     = new THREE.Color(state.waxEdge);
+        const waxCore     = new THREE.Color(state.waxCore);
+        const fluidTop    = new THREE.Color(state.fluidTop);
+        const fluidBottom = new THREE.Color(state.fluidBottom);
+        const fillLight   = new THREE.Color(state.fillLight);
 
+        for (const mat of materials) {
+            mat.uniforms.colorWaxEdge.value     = waxEdge;
+            mat.uniforms.colorWaxCore.value     = waxCore;
+            mat.uniforms.colorFluidTop.value    = fluidTop;
+            mat.uniforms.colorFluidBottom.value = fluidBottom;
+            mat.uniforms.colorFogBlend.value    = fluidBottom;
+            mat.uniforms.colorFillLight.value   = fillLight;
+        }
+
+        applyDynamicGradient(state.fluidTop, state.fluidBottom);
+    });
+
+    const handleResize = () => onResize(window.innerWidth, window.innerHeight);
     window.addEventListener('resize', handleResize);
-
-    // fullscreenchange fires after layout is complete — reliable source of truth
     document.addEventListener('fullscreenchange', handleResize);
 
     window.addEventListener('keydown', (e) => {
-        if (e.key !== 'f' && e.key !== 'F') return;
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen()
-                .catch(err => console.error('fullscreen failed:', err));
-        } else {
-            document.exitFullscreen();
+        if (e.key === 'f' || e.key === 'F') {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen()
+                    .catch(err => console.error('fullscreen failed:', err));
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        if (e.key === 'h' || e.key === 'H') {
+            menu.toggle();
         }
     });
 }
