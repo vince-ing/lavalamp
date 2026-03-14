@@ -27,17 +27,26 @@ function applyDynamicGradient() {
 function bootstrap() {
     applyDynamicGradient();
 
-    const material     = createLavaMaterial();
-    const sceneContext = createScene(material);
+    // Create 3 distinct layer materials
+    const matBack  = createLavaMaterial('back');
+    const matMid   = createLavaMaterial('middle');
+    const matFront = createLavaMaterial('front');
+    const materials = [matBack, matMid, matFront];
+
+    const sceneContext = createScene(materials);
     document.body.appendChild(sceneContext.renderer.domElement);
 
     window.addEventListener('resize', () => {
         sceneContext.renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    const blobSystem = new BlobSystem(DEFAULT_BLOB_COUNT);
-    const input      = new InputController(sceneContext.renderer.domElement);
-    startLoop(sceneContext, blobSystem, material, input);
-}
+    // Create 3 independent physics systems (adjust counts for depth parallax effect)
+    const sysBack  = new BlobSystem(DEFAULT_BLOB_COUNT + 4);
+    const sysMid   = new BlobSystem(DEFAULT_BLOB_COUNT);
+    const sysFront = new BlobSystem(DEFAULT_BLOB_COUNT - 4);
+    const blobSystems = [sysBack, sysMid, sysFront];
 
-bootstrap();
+    const input = new InputController(sceneContext.renderer.domElement);
+    
+    startLoop(sceneContext, blobSystems, materials, input);
+}
