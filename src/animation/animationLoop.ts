@@ -7,36 +7,30 @@ export function startLoop(
     sceneContext: SceneContext,
     blobSystem: BlobSystem,
     material: THREE.ShaderMaterial,
-    inputController?: InputController // Added as an optional param to satisfy the architecture flow
+    inputController?: InputController
 ): void {
     const { scene, camera, renderer } = sceneContext;
     let lastTime = performance.now();
 
     function animate(currentTime: number) {
         requestAnimationFrame(animate);
-
-        const dt = Math.min((currentTime - lastTime) / 1000, 0.1);
+        const dt = Math.min((currentTime - lastTime) / 1000, 0.04);
         lastTime = currentTime;
-        
-        const timeInSeconds = currentTime / 1000;
-        const aspect = window.innerWidth / window.innerHeight; // Calculate current aspect
+        const t = currentTime / 1000;
+        const aspect = window.innerWidth / window.innerHeight;
 
-        if (inputController) {
-            inputController.update(blobSystem);
-        }
+        if (inputController) inputController.update(blobSystem);
 
-        // Pass aspect ratio to the physics system
-        blobSystem.update(dt, timeInSeconds, aspect);
+        blobSystem.update(dt, t, aspect);
 
-        material.uniforms.blobs.value = blobSystem.getBlobPositions();
-        material.uniforms.radii.value = blobSystem.getBlobRadii();
-        material.uniforms.blobCount.value = blobSystem.getBlobCount();
-        material.uniforms.time.value = timeInSeconds;
-        material.uniforms.aspect.value = aspect; // Update shader uniform
+        material.uniforms.blobs.value     = blobSystem.getSeedPositions();
+        material.uniforms.radii.value     = blobSystem.getSeedRadii();
+        material.uniforms.blobCount.value = blobSystem.getSeedCount();
+        material.uniforms.time.value      = t;
+        material.uniforms.aspect.value    = aspect;
 
         renderer.render(scene, camera);
     }
 
-    // Kick off the loop
     requestAnimationFrame(animate);
 }

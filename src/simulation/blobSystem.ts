@@ -1,78 +1,61 @@
-import { Blob } from './blob';
+import { Blob } from '../core/types';
+import { spawnBlobs } from './blob';
 import { updateBlob } from './physics';
-import { MAX_BLOBS, LAMP_WIDTH, LAMP_HEIGHT } from '../core/constants';
+import { MAX_BLOBS, LAMP_HEIGHT } from '../core/constants';
 
 export class BlobSystem {
-    private blobs: Blob[] = [];
-    private positions: Float32Array;
-    private radii: Float32Array;
+    blobs: Blob[];
+    private seedPos: Float32Array;
+    private seedRad: Float32Array;
 
-    constructor(blobCount: number) {
-        const count = Math.min(blobCount, MAX_BLOBS);
-        
-        for (let i = 0; i < count; i++) {
-            this.blobs.push(new Blob(i));
-        }
-
-        // Initialize typed arrays for efficient GPU transfer
-        this.positions = new Float32Array(MAX_BLOBS * 2);
-        this.radii = new Float32Array(MAX_BLOBS);
+    constructor(count: number) {
+        const aspect = window.innerWidth / window.innerHeight;
+        this.blobs   = spawnBlobs(count, aspect);
+        // One entry per blob — no satellites
+        this.seedPos = new Float32Array(MAX_BLOBS * 2);
+        this.seedRad = new Float32Array(MAX_BLOBS);
     }
 
     update(dt: number, time: number, aspect: number): void {
-        // Calculate dynamic width based on the fixed height (4.0) and aspect ratio
-        const dynamicWidth = LAMP_HEIGHT * aspect;
-        const halfWidth = dynamicWidth / 2;
+        const hw = (LAMP_HEIGHT * aspect) / 2;
+        const clampedDt = Math.min(dt, 0.04);
 
-        for (let i = 0; i < this.blobs.length; i++) {
-            const blob = this.blobs[i];
+        for (const b of this.blobs) {
+            updateBlob(b, clampedDt, time);
+            b.position.x += b.velocity.x * clampedDt;
+            b.position.y += b.velocity.y * clampedDt;
 
-            updateBlob(blob, dt, time);
+            const m = b.radius * 0.4;
+            if (b.position.x < -hw + m) { b.position.x = -hw + m; b.velocity.x =  Math.abs(b.velocity.x) * 0.5; }
+            if (b.position.x >  hw - m) { b.position.x =  hw - m; b.velocity.x = -Math.abs(b.velocity.x) * 0.5; }
+            if (b.position.y < m)               { b.position.y = m;               b.velocity.y =  Math.abs(b.velocity.y) * 0.5; }
+            if (b.position.y > LAMP_HEIGHT - m) { b.position.y = LAMP_HEIGHT - m; b.velocity.y = -Math.abs(b.velocity.y) * 0.5; }
 
-            blob.position.x += blob.velocity.x * dt;
-            blob.position.y += blob.velocity.y * dt;
+            b.velocity.x *= 0.94;
+            b.velocity.y *= 0.94;
 
-            // Enforce dynamic X bounds
-            if (blob.position.x < -halfWidth + blob.radius) {
-                blob.position.x = -halfWidth + blob.radius;
-                blob.velocity.x *= -0.5;
-            } else if (blob.position.x > halfWidth - blob.radius) {
-                blob.position.x = halfWidth - blob.radius;
-                blob.velocity.x *= -0.5;
-            }
+            // Noise wobble: gently shift the rendered position each frame.
+            // This is ONLY applied to the shader position, not the physics position,
+            // so physics stays stable while the visual surface breathes organically.
+            const wx = Math.sin(time * b.noiseSpeed       + b.noisePhaseX) * b.noiseAmp;
+            const wy = Math.cos(time * b.noiseSpeed * 1.3 + b.noisePhaseY) * b.noiseAmp;
 
-            // Enforce Y bounds (remains unchanged)
-            if (blob.position.y < blob.radius) {
-                blob.position.y = blob.radius;
-                blob.velocity.y *= -0.5;
-            } else if (blob.position.y > LAMP_HEIGHT - blob.radius) {
-                blob.position.y = LAMP_HEIGHT - blob.radius;
-                blob.velocity.y *= -0.5;
-            }
+            const i = this.blobs.indexOf(b);
+            this.seedPos[i * 2]     = b.position.x + wx;
+            this.seedPos[i * 2 + 1] = b.position.y + wy;
+            this.seedRad[i]         = b.radius;
+        }
 
-            blob.velocity.x *= 0.99;
-            blob.velocity.y *= 0.99;
-
-            this.positions[i * 2] = blob.position.x;
-            this.positions[i * 2 + 1] = blob.position.y;
-            this.radii[i] = blob.radius;
+        // Zero unused
+        for (let i = this.blobs.length; i < MAX_BLOBS; i++) {
+            this.seedPos[i * 2]     = -9999;
+            this.seedPos[i * 2 + 1] = -9999;
+            this.seedRad[i]         = 0;
         }
     }
 
-    getBlobPositions(): Float32Array {
-        return this.positions;
-    }
-
-    getBlobRadii(): Float32Array {
-        return this.radii;
-    }
-
-    getBlobCount(): number {
-        return this.blobs.length;
-    }
-
-    // Exposing the raw array for the InputController to read spatial data
-    getBlobs(): Blob[] {
-        return this.blobs;
-    }
+    getSeedPositions() { return this.seedPos; }
+    getSeedRadii()     { return this.seedRad; }
+    getSeedCount()     { return this.blobs.length; }
+    getBlobs()         { return this.blobs; }
 }

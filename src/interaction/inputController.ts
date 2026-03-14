@@ -1,44 +1,60 @@
 import { BlobSystem } from '../simulation/blobSystem';
-import { LAMP_WIDTH, LAMP_HEIGHT } from '../core/constants';
+import { LAMP_HEIGHT } from '../core/constants';
+
+// Max speed the mouse can push a blob to
+const MAX_INTERACTION_SPEED = 2.2;
 
 export class InputController {
-    private mouse: { x: number, y: number } = { x: 0, y: 0 };
-    private isClicked: boolean = false;
+    private mouse = { x: 0, y: 0 };
+    private leftDown  = false;
+    private rightDown = false;
 
     constructor(canvas: HTMLCanvasElement) {
-        canvas.addEventListener('mousemove', (e: MouseEvent) => {
-            const rect = canvas.getBoundingClientRect();
-            
-            // Calculate dynamic physics width on the fly based on the canvas dimensions
-            const aspect = rect.width / rect.height;
-            const dynamicWidth = LAMP_HEIGHT * aspect;
-
-            // Map mouse coordinates to the dynamic physics boundaries
-            this.mouse.x = ((e.clientX - rect.left) / rect.width) * dynamicWidth - (dynamicWidth / 2);
-            this.mouse.y = (1.0 - (e.clientY - rect.top) / rect.height) * LAMP_HEIGHT;
-        });
-
-        canvas.addEventListener('mousedown', () => { this.isClicked = true; });
-        canvas.addEventListener('mouseup', () => { this.isClicked = false; });
-        canvas.addEventListener('mouseleave', () => { this.isClicked = false; });
+        const toSim = (cx: number, cy: number) => {
+            const r = canvas.getBoundingClientRect();
+            const aspect = r.width / r.height;
+            const sw = LAMP_HEIGHT * aspect;
+            return { x: ((cx - r.left) / r.width) * sw - sw / 2,
+                     y: (1 - (cy - r.top) / r.height) * LAMP_HEIGHT };
+        };
+        canvas.addEventListener('mousemove',   (e) => { this.mouse = toSim(e.clientX, e.clientY); });
+        canvas.addEventListener('mousedown',   (e) => { if (e.button===0) this.leftDown=true;  if (e.button===2) this.rightDown=true; });
+        canvas.addEventListener('mouseup',     (e) => { if (e.button===0) this.leftDown=false; if (e.button===2) this.rightDown=false; });
+        canvas.addEventListener('mouseleave',  ()  => { this.leftDown=false; this.rightDown=false; });
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     }
 
-    update(blobSystem: BlobSystem): void {
-        if (!this.isClicked) return;
+    update(bs: BlobSystem): void {
+        if (!this.leftDown && !this.rightDown) return;
+        const { x: mx, y: my } = this.mouse;
 
-        const blobs = blobSystem.getBlobs();
-        
-        for (const blob of blobs) {
-            const dx = blob.position.x - this.mouse.x;
-            const dy = blob.position.y - this.mouse.y;
+        for (const b of bs.getBlobs()) {
+            const dx = b.position.x - mx;
+            const dy = b.position.y - my;
             const dist = Math.sqrt(dx * dx + dy * dy);
+            const reach = b.radius * 4.5;
+            if (dist < reach && dist > 0.001) {
+                const nx = dx / dist;
+                const ny = dy / dist;
+                // Force tapers off quadratically toward edge of reach
+                const t = 1 - dist / reach;
+                const str = t * t * 1.6; // snappier than before but still smooth
 
-            // Apply directional force if the mouse is within the interaction radius
-            // We use a slightly expanded radius to make clicking feel more responsive
-            if (dist < blob.radius * 2.5 && dist > 0) {
-                const force = 1.5; // Strength of the repulsion
-                blob.velocity.x += (dx / dist) * force;
-                blob.velocity.y += (dy / dist) * force;
+                if (this.leftDown) {
+                    b.velocity.x -= nx * str;
+                    b.velocity.y -= ny * str;
+                }
+                if (this.rightDown) {
+                    b.velocity.x += nx * str * 1.4;
+                    b.velocity.y += ny * str * 1.4;
+                }
+
+                // Hard cap on velocity so no blob ever launches off screen
+                const speed = Math.sqrt(b.velocity.x**2 + b.velocity.y**2);
+                if (speed > MAX_INTERACTION_SPEED) {
+                    b.velocity.x = (b.velocity.x / speed) * MAX_INTERACTION_SPEED;
+                    b.velocity.y = (b.velocity.y / speed) * MAX_INTERACTION_SPEED;
+                }
             }
         }
     }

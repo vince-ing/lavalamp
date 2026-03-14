@@ -2,17 +2,15 @@ import * as THREE from 'three';
 
 export interface Blob {
     id: number;
-    position: { x: number, y: number };
-    velocity: { x: number, y: number };
+    position: { x: number; y: number };
+    velocity: { x: number; y: number };
     temperature: number;
     radius: number;
-}
-
-export interface SimulationState {
-    blobs: Blob[];
-    gravity: number;
-    buoyancyStrength: number;
-    turbulenceStrength: number;
+    // Unique noise phase offsets so each blob breathes differently
+    noisePhaseX: number;
+    noisePhaseY: number;
+    noiseSpeed:  number;
+    noiseAmp:    number;
 }
 
 export interface SceneContext {

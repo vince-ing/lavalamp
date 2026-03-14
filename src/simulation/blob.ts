@@ -1,29 +1,44 @@
-import { Blob as IBlob } from '../core/types';
-import { LAMP_WIDTH, LAMP_HEIGHT } from '../core/constants';
+import { Blob } from '../core/types';
+import { LAMP_HEIGHT } from '../core/constants';
 
-export class Blob implements IBlob {
-    id: number;
-    position: { x: number, y: number };
-    velocity: { x: number, y: number };
-    temperature: number;
-    radius: number;
+let _id = 0;
 
-    constructor(id: number) {
-        this.id = id;
-        
-        // Random position within the lamp bounds
-        this.position = {
-            x: (Math.random() - 0.5) * LAMP_WIDTH,
-            y: Math.random() * LAMP_HEIGHT
-        };
-        
-        // Initial velocity is zero
-        this.velocity = { x: 0, y: 0 };
-        
-        // Temperature between 0 and 1
-        this.temperature = Math.random();
-        
-        // Radius between 0.15 and 0.35
-        this.radius = 0.15 + (Math.random() * 0.20);
+export function makeBlob(cx: number, cy: number, radius: number, temp: number): Blob {
+    return {
+        id: _id++,
+        position: { x: cx, y: cy },
+        velocity:  { x: (Math.random() - 0.5) * 0.2, y: (Math.random() - 0.5) * 0.2 },
+        temperature: temp,
+        radius,
+        noisePhaseX: Math.random() * Math.PI * 2,
+        noisePhaseY: Math.random() * Math.PI * 2,
+        noiseSpeed:  0.3 + Math.random() * 0.4,
+        // Amp is proportional to radius so large blobs wobble more
+        noiseAmp:    radius * (0.12 + Math.random() * 0.10),
+    };
+}
+
+export function spawnBlobs(count: number, aspect: number): Blob[] {
+    const blobs: Blob[] = [];
+    const hw = (LAMP_HEIGHT * aspect) / 2;
+    const cols = Math.ceil(Math.sqrt(count * aspect));
+    const rows = Math.ceil(count / cols);
+    const cw = (hw * 2) / cols;
+    const ch = LAMP_HEIGHT / rows;
+
+    for (let i = 0; i < count; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const cx = -hw + col * cw + cw * 0.5 + (Math.random() - 0.5) * cw * 0.65;
+        const cy =       row * ch + ch * 0.5 + (Math.random() - 0.5) * ch * 0.65;
+
+        const r = Math.random();
+        let radius: number;
+        if      (r < 0.35) radius = 0.10 + Math.random() * 0.08; // small
+        else if (r < 0.75) radius = 0.18 + Math.random() * 0.12; // medium
+        else               radius = 0.30 + Math.random() * 0.12; // large
+
+        blobs.push(makeBlob(cx, cy, radius, (1 - cy / LAMP_HEIGHT) * 0.9 + Math.random() * 0.4));
     }
+    return blobs;
 }
