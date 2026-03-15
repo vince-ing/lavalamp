@@ -105,8 +105,27 @@ float subsurfaceGlow(vec2 p) {
     return glow;
 }
 
+// ── Heat shimmer ─────────────────────────────────────────────────────────────
+// Offsets the sample position horizontally near the bottom of the lamp,
+// simulating refractive distortion from hot rising air.
+// Strength falls off smoothly to zero by mid-lamp so the top stays clean.
+const float SHIMMER_STRENGTH = 0.001;  // max horizontal wobble in world units
+const float SHIMMER_SCALE    = 70.8;    // spatial frequency of shimmer bands
+const float SHIMMER_SPEED    = 2.4;    // how fast the shimmer rises
+const float SHIMMER_FALLOFF  = 2.3;    // how quickly it fades from the bottom up
+
+vec2 heatShimmer(vec2 uv) {
+    float heat = pow(clamp(1.0 - uv.y * SHIMMER_FALLOFF, 0.0, 1.0), 2.0);
+    float shift =
+        sin(uv.y * SHIMMER_SCALE       - time * SHIMMER_SPEED)         * 0.6 +
+        sin(uv.y * SHIMMER_SCALE * 1.7 - time * SHIMMER_SPEED * 1.3 + 1.4) * 0.4;
+    return vec2(uv.x + shift * SHIMMER_STRENGTH * heat, uv.y);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 void main() {
-    vec2 p = vec2((vUv.x - 0.5) * 4.0 * aspect, vUv.y * 4.0);
+    vec2 uv = heatShimmer(vUv);
+    vec2 p = vec2((uv.x - 0.5) * 4.0 * aspect, uv.y * 4.0);
     float f = field(p);
 
     float alpha = smoothstep(threshold - 0.018, threshold + 0.018, f);
