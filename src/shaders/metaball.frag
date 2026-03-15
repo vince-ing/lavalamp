@@ -59,11 +59,21 @@ float rawDensity(vec3 p) {
 }
 
 float scene(vec3 p) {
-    float den = rawDensity(p);
+    // Warp the sample point with low-frequency noise before evaluating density.
+    // This stretches and distorts the isosurface into organic amoeba shapes
+    // without breaking the SDF's ability to find the surface.
+    vec3 warp = vec3(
+        vnoise(p * 0.8 + vec3(time * 0.04, 0.0, 1.7)),
+        vnoise(p * 0.8 + vec3(0.0, time * 0.035, 3.4)),
+        vnoise(p * 0.8 + vec3(5.1, time * 0.03, 0.0))
+    ) * 2.0 - 1.0;
+    vec3 pw = p + warp * 0.38;
+
+    float den = rawDensity(pw);
     if (den < 0.333) return 2.0;
     float baseDist  = 1.0 / den - 1.0;
     float proximity = exp(-abs(baseDist) * 16.0);
-    float noiseAmp  = 0.032 * proximity;
+    float noiseAmp  = 0.045 * proximity;
     return baseDist - surfaceWave(p) * noiseAmp;
 }
 
