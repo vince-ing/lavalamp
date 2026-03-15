@@ -14,7 +14,7 @@ export const LAYER_BLOB_COUNTS = {
     front:  8,
 };
 
-export const FILL_LIGHT_STRENGTH = 0.025;
+export const FILL_LIGHT_STRENGTH = 0.010;
 
 export const SHADER_COLORS = {
     fluidTop:    new THREE.Color(PALETTE.fluidTop),

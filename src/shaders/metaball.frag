@@ -180,7 +180,7 @@ void main() {
 
     float heightAtten = 1.0 - heightT * heightT * 0.5;
 
-    vec3 waxLit    = vec3(0.243, 0.694, 1);   // slightly less bright — waxy not glossy
+    vec3 waxLit    = vec3(0.169, 0.573, 0.922);   // slightly less bright — waxy not glossy
     vec3 waxShadow = vec3(0.09, 0.071, 0.62);
     waxShadow = mix(waxShadow, vec3(0.0, 1.0, 0.7) * 1.0, smoothstep(0.0, 0.9, heightT));
     // waxShadow = mix(waxShadow, vec3(0.0, 0.0, 0.0), smoothstep(0.4, 0.0, heightT));
