@@ -1,32 +1,24 @@
 import { Blob } from '../core/types';
-import { GRAVITY, BUOYANCY, HEAT_ZONE, COOL_ZONE, TURBULENCE, REPULSION_STRENGTH, REPULSION_MIN_DIST } from '../core/constants';
+import {
+    GRAVITY, BUOYANCY, HEAT_ZONE, COOL_ZONE,
+    TURBULENCE, REPULSION_STRENGTH, REPULSION_MIN_DIST,
+    LAMP_DEPTH,
+} from '../core/constants';
 
-// ── Curl noise ───────────────────────────────────────────────────────────────
-// Curl of a scalar potential field is always divergence-free, meaning blobs
-// swirl and orbit without clumping or dispersing — exactly what lava does.
-//
-// We use a smooth gradient noise potential ψ(x,y,t) and take its curl:
-//   vx =  ∂ψ/∂y
-//   vy = -∂ψ/∂x
-// approximated via finite differences so we don't need analytic derivatives.
-
-const CURL_SCALE    = 1.0;  // spatial frequency of swirl (lower = bigger vortices)
-const CURL_STRENGTH = 0.5;  // how strongly curl nudges velocity (relative to TURBULENCE)
-const CURL_SPEED    = 0.6;  // how slowly the curl field evolves over time
+// ── Curl noise ────────────────────────────────────────────────────────────────
+const CURL_SCALE    = 1.0;
+const CURL_STRENGTH = 0.5;
+const CURL_SPEED    = 0.6;
 
 function smoothHash(x: number, y: number): number {
-    // Deterministic smooth hash — no Math.random(), same value every call for same input
     const ix = Math.floor(x), iy = Math.floor(y);
     const fx = x - ix,        fy = y - iy;
-    // Smoothstep
     const ux = fx * fx * (3 - 2 * fx);
     const uy = fy * fy * (3 - 2 * fy);
-
     const h = (nx: number, ny: number) => {
         let n = Math.sin(nx * 127.1 + ny * 311.7) * 43758.5453;
-        return n - Math.floor(n);  // fract
+        return n - Math.floor(n);
     };
-
     return (
         h(ix,   iy  ) * (1 - ux) * (1 - uy) +
         h(ix+1, iy  ) *      ux  * (1 - uy) +
@@ -39,20 +31,13 @@ function curlNoise(x: number, y: number, t: number): { vx: number; vy: number } 
     const e = 0.01;
     const sc = CURL_SCALE;
     const tx = t * CURL_SPEED;
-    const ty = t * CURL_SPEED * 0.7;  // slightly different rate on y so field isn't boring
-
-    // Sample potential ψ at four neighbours for finite-difference gradient
+    const ty = t * CURL_SPEED * 0.7;
     const dψdy = (smoothHash(x * sc + tx, (y + e) * sc + ty) -
                   smoothHash(x * sc + tx, (y - e) * sc + ty)) / (2 * e);
     const dψdx = (smoothHash((x + e) * sc + tx, y * sc + ty) -
                   smoothHash((x - e) * sc + tx, y * sc + ty)) / (2 * e);
-
-    return {
-        vx:  dψdy,   //  ∂ψ/∂y
-        vy: -dψdx,   // -∂ψ/∂x
-    };
+    return { vx: dψdy, vy: -dψdx };
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
 export function updateBlob(blob: Blob, dt: number, time: number): void {
     blob.privateTime += dt * blob.noiseSpeed;
@@ -62,7 +47,6 @@ export function updateBlob(blob: Blob, dt: number, time: number): void {
     blob.velocity.y += buoyF * dt;
     blob.velocity.y -= GRAVITY * dt;
 
-    // Existing organic per-blob turbulence — kept unchanged
     blob.velocity.x += (
         Math.sin(t              + blob.noisePhaseX) * 0.65 +
         Math.sin(t * 2.7183     + blob.noisePhaseY) * 0.35
@@ -73,9 +57,11 @@ export function updateBlob(blob: Blob, dt: number, time: number): void {
         Math.cos(t * 0.6180     + blob.noisePhaseX) * 0.35
     ) * TURBULENCE * 0.4 * dt;
 
-    // Curl noise — adds coherent swirling motion on top of the per-blob noise.
-    // Using the global time (not privateTime) so all blobs share the same
-    // slowly-evolving vortex field and swirl together organically.
+    // Gentle Z drift — blobs slowly wander in depth
+    blob.velocity.z += (
+        Math.sin(t * 0.7 + blob.noisePhaseX * 1.3) * 0.4
+    ) * TURBULENCE * 0.2 * dt;
+
     const curl = curlNoise(blob.position.x, blob.position.y, time);
     blob.velocity.x += curl.vx * CURL_STRENGTH * dt;
     blob.velocity.y += curl.vy * CURL_STRENGTH * dt;
@@ -92,7 +78,8 @@ export function applyRepulsion(blobs: Blob[], dt: number): void {
 
             const dx = a.position.x - b.position.x;
             const dy = a.position.y - b.position.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
+            const dz = a.position.z - b.position.z;
+            const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
 
             const minDist = (a.radius + b.radius) * 0.9;
             if (dist >= minDist || dist < REPULSION_MIN_DIST) continue;
@@ -102,6 +89,7 @@ export function applyRepulsion(blobs: Blob[], dt: number): void {
 
             const nx = dx / dist;
             const ny = dy / dist;
+            const nz = dz / dist;
 
             const totalMass = a.radius * a.radius + b.radius * b.radius;
             const wa = b.radius * b.radius / totalMass;
@@ -109,8 +97,10 @@ export function applyRepulsion(blobs: Blob[], dt: number): void {
 
             a.velocity.x += nx * force * wa;
             a.velocity.y += ny * force * wa;
+            a.velocity.z += nz * force * wa * 0.3;
             b.velocity.x -= nx * force * wb;
             b.velocity.y -= ny * force * wb;
+            b.velocity.z -= nz * force * wb * 0.3;
         }
     }
 }

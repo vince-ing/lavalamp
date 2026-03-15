@@ -1,13 +1,9 @@
-uniform vec2  blobs[25];
-uniform float radii[25];
-uniform vec2  velocities[25];
+uniform vec3  blobs[30];
+uniform float radii[30];
+uniform vec2  velocities[30];
 uniform int   blobCount;
-uniform float threshold;
 uniform float time;
 uniform float aspect;
-uniform vec3  colorFogBlend;
-uniform float fogAmount;
-uniform float layerIndex;
 
 uniform vec3  colorFluidTop;
 uniform vec3  colorFluidBottom;
@@ -18,258 +14,146 @@ uniform float fillLightStrength;
 
 varying vec2 vUv;
 
-// ── Noise ────────────────────────────────────────────────────────────────────
-float hash(vec2 p) {
-    p = fract(p * vec2(127.1, 311.7));
-    p += dot(p, p + 19.19);
-    return fract(p.x * p.y);
-}
+const float LAMP_HEIGHT = 4.0;
+const float LAMP_DEPTH  = 2.5;
+const float CAM_Z       = -2.0;
+const int   MAX_ITERS   = 80;
+const float MIN_DIST    = 0.02;
+const float MAX_STEP    = 0.06;
+const float LEN_FACTOR  = 0.45;
+const float NDELTA      = 0.001;
 
-float valueNoise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(
-        mix(hash(i + vec2(0,0)), hash(i + vec2(1,0)), u.x),
-        mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), u.x),
-        u.y
-    );
-}
-
-float fbm(vec2 p) {
-    float v  = valueNoise(p)                          * 0.62;
-          v += valueNoise(p * 2.1 + vec2(3.7, 1.3))  * 0.38;
-    return v;
-}
-
-const float NOISE_SCALE    = 1.5;
-const float NOISE_STRENGTH = 0.04;
-const float NOISE_SPEED    = 0.6;
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── Caustic light patches ────────────────────────────────────────────────────
-const float CAUSTIC_SCALE    = 1.2;
-const float CAUSTIC_SPEED    = 0.09;
-const float CAUSTIC_WARP     = 0.55;
-const float CAUSTIC_SHARP    = 1.2;
-const float CAUSTIC_STRENGTH = 0.15;
-
-// Large per-layer offsets so each layer samples a completely uncorrelated
-// region of the noise field — back / middle / front all look different.
-vec2 layerSeed() {
-    if (layerIndex < 0.5) return vec2(0.0,   0.0);   // back
-    if (layerIndex < 1.5) return vec2(17.3,  31.7);  // middle
-                          return vec2(47.1, -23.9);  // front
-}
-
-float causticLayer(vec2 p, float timeOffset, vec2 drift) {
-    vec2 warpOff = vec2(
-        fbm(p * 0.9 + vec2(1.7, 9.2) + timeOffset * 0.31),
-        fbm(p * 0.9 + vec2(8.3, 2.8) - timeOffset * 0.27)
-    ) * 2.0 - 1.0;
-
-    vec2 warped = p + warpOff * CAUSTIC_WARP + drift;
-
-    float n    = fbm(warped);
-    float tent = 1.0 - abs(n * 2.0 - 1.0);
-    return pow(clamp(tent, 0.0, 1.0), CAUSTIC_SHARP);
-}
-
-float causticValue(vec2 p, float t) {
-    float sc = CAUSTIC_SCALE;
-
-    float layerA = causticLayer(
-        p * sc,
-        t,
-        vec2(t *  CAUSTIC_SPEED, t * CAUSTIC_SPEED * 0.61)
-    );
-    float layerB = causticLayer(
-        p * sc * 1.37 + vec2(3.1, 7.4),
-        t + 4.7,
-        vec2(t * -CAUSTIC_SPEED * 0.53, t * CAUSTIC_SPEED * 0.82)
-    );
-
-    return (layerA + layerB) * 0.5;
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ── Subsurface glow ───────────────────────────────────────────────────────────
-const float SSS_FALLOFF  = 0.15;
-const float SSS_STRENGTH = 0.02;
-// ─────────────────────────────────────────────────────────────────────────────
-
-float wyvill(float d2, float R) {
-    float r2 = R * R;
-    if (d2 >= r2) return 0.0;
-    float t = 1.0 - d2 / r2;
-    return t * t * t;
-}
-
-float squishKernel(vec2 offset, float R, vec2 vel) {
-    float speed = length(vel);
-    if (speed < 0.01) return wyvill(dot(offset, offset), R);
-
-    vec2  dir       = vel / speed;
-    float along     = dot(offset, dir);
-    float squishAmt = clamp(speed * 1.6, 0.0, 0.38);
-    float warpScale = clamp(1.0 - squishAmt * sign(along) * 0.55, 0.55, 1.45);
-    vec2  perp      = offset - along * dir;
-    vec2  warped    = perp + dir * (along * warpScale);
-    return wyvill(dot(warped, warped), R);
-}
-
-float field(vec2 p) {
-    float f = 0.0;
-    for (int i = 0; i < 25; i++) {
+float scene(vec3 p) {
+    float den = 0.0;
+    for (int i = 0; i < 30; i++) {
         if (i >= blobCount) break;
-        f += squishKernel(p - blobs[i], radii[i] * 2.8, velocities[i]);
-    }
-    vec2 noiseCoord = p * NOISE_SCALE + vec2(time * NOISE_SPEED, time * NOISE_SPEED * 0.7);
-    float n = fbm(noiseCoord) * 2.0 - 1.0;
-    f += n * NOISE_STRENGTH;
-    return f;
-}
-
-float subsurfaceGlow(vec2 p) {
-    float glow = 0.0;
-    for (int i = 0; i < 25; i++) {
-        if (i >= blobCount) break;
-        vec2  d   = p - blobs[i];
-        float d2  = dot(d, d);
+        vec3  dis = blobs[i] - p;
         float r   = radii[i];
-        float nd2 = d2 / (r * r);
-        glow += exp(-nd2 * SSS_FALLOFF);
+        float x   = dot(dis, dis);
+        if (x < 0.0001) x = 0.0001;
+        den += (r * r) / x;
     }
-    return glow;
+    if (den < 0.01) return 2.0;
+    return 1.0 / den - 1.0;
 }
 
-// ── Heat shimmer ─────────────────────────────────────────────────────────────
-const float SHIMMER_STRENGTH = 0.001;
-const float SHIMMER_SCALE    = 70.8;
-const float SHIMMER_SPEED    = 2.4;
-const float SHIMMER_FALLOFF  = 2.3;
+vec3 sceneNormal(vec3 p) {
+    float e = NDELTA;
+    return normalize(vec3(
+        scene(p + vec3(e,0,0)) - scene(p - vec3(e,0,0)),
+        scene(p + vec3(0,e,0)) - scene(p - vec3(0,e,0)),
+        scene(p + vec3(0,0,e)) - scene(p - vec3(0,0,e))
+    ));
+}
+
+float thickness(vec3 entry, vec3 rayDir) {
+    vec3  p = entry;
+    float t = 0.0;
+    for (int i = 0; i < 12; i++) {
+        p += rayDir * 0.05;
+        t += 0.05;
+        if (scene(p) > 0.0) break;
+    }
+    return t;
+}
 
 vec2 heatShimmer(vec2 uv) {
-    float heat = pow(clamp(1.0 - uv.y * SHIMMER_FALLOFF, 0.0, 1.0), 2.0);
-    float shift =
-        sin(uv.y * SHIMMER_SCALE       - time * SHIMMER_SPEED)         * 0.6 +
-        sin(uv.y * SHIMMER_SCALE * 1.7 - time * SHIMMER_SPEED * 1.3 + 1.4) * 0.4;
-    return vec2(uv.x + shift * SHIMMER_STRENGTH * heat, uv.y);
+    float heat  = pow(clamp(1.0 - uv.y * 2.3, 0.0, 1.0), 2.0);
+    float shift = sin(uv.y * 70.8  - time * 2.4) * 0.6
+                + sin(uv.y * 120.3 - time * 3.1 + 1.4) * 0.4;
+    return vec2(uv.x + shift * 0.001 * heat, uv.y);
 }
-// ─────────────────────────────────────────────────────────────────────────────
+
+// Trace a single ray, return color and hit (w=1) or miss (w=0)
+vec4 trace(vec2 uv) {
+    float hw     = LAMP_HEIGHT * aspect;
+    float worldX = (uv.x - 0.5) * 2.0 * hw;
+    float worldY = uv.y * LAMP_HEIGHT;
+
+    vec3 pos    = vec3(worldX, worldY, CAM_Z);
+    vec3 rayDir = vec3(0.0, 0.0, 1.0);
+
+    float dist   = 2.0;
+    float tMarch = 0.0;
+    float tMax   = LAMP_DEPTH + abs(CAM_Z) + 1.0;
+    vec3  prevPos = pos;
+
+    for (int i = 0; i < MAX_ITERS; i++) {
+        if (tMarch > tMax) break;
+        dist = scene(pos);
+        if (dist < MIN_DIST) break;
+        prevPos = pos;
+        float step = min(abs(dist) * LEN_FACTOR, MAX_STEP);
+        step = max(step, 0.005);
+        pos    += rayDir * step;
+        tMarch += step;
+    }
+
+    if (dist >= MIN_DIST) return vec4(0.0);
+
+    // Bisection
+    vec3 posIn  = pos;
+    vec3 posOut = prevPos;
+    for (int i = 0; i < 10; i++) {
+        vec3  mid = (posIn + posOut) * 0.5;
+        if (scene(mid) < 0.0) posIn  = mid;
+        else                  posOut = mid;
+    }
+    pos = (posIn + posOut) * 0.5;
+
+    vec3  N      = sceneNormal(pos);
+    vec3  V      = -rayDir;
+    float NdotV  = max(0.0, dot(N, V));
+    float heat   = 1.0 - clamp(pos.y / LAMP_HEIGHT, 0.0, 1.0);
+    float depthT = clamp((pos.z - CAM_Z) / (LAMP_DEPTH + abs(CAM_Z)), 0.0, 1.0);
+    float thickN = clamp(thickness(pos, rayDir) / 0.7, 0.0, 1.0);
+    float fresnel = pow(1.0 - NdotV, 2.5);
+
+    vec3  keyDir  = normalize(vec3(0.3,  1.0,  0.6));
+    vec3  fillDir = normalize(vec3(-0.6, 0.4,  0.7));
+    vec3  rimDir  = normalize(vec3(0.5,  0.3, -0.8));
+
+    float dKey  = max(0.0, dot(N, keyDir));
+    float dFill = max(0.0, dot(N, fillDir)) * 0.4;
+    float dRim  = max(0.0, dot(N, rimDir))  * 0.2;
+    float lighting = 0.15 + dKey + dFill + dRim;
+
+    vec3  colorWaxHot = vec3(1.0, 0.68, 0.15);
+    vec3  coreHot     = mix(colorWaxCore, colorWaxHot, heat * 0.65);
+    vec3  surfaceCol  = mix(colorWaxEdge * 0.7, coreHot,
+                            clamp(dKey * 1.2 + heat * 0.25, 0.0, 1.0));
+
+    vec3 col = surfaceCol * lighting;
+    col += mix(colorWaxEdge, coreHot, heat * 0.8) * fresnel * 0.5;
+    col += colorFillLight * dFill * fillLightStrength * 0.8;
+
+    float sssStr = (1.0 - thickN) * heat * 0.4;
+    col += mix(colorWaxEdge, colorWaxHot, heat * 0.5) * sssStr * dKey * 0.5;
+
+    vec3  H    = normalize(keyDir + V);
+    float spec = pow(max(0.0, dot(N, H)), 8.0) * 0.15;
+    col += vec3(1.0, 0.95, 0.85) * spec;
+
+    col *= mix(1.0, 0.75, depthT * 0.4);
+    col  = col / (col + vec3(0.5)) * 1.5;
+    col  = mix(col, mix(colorFluidBottom, colorFluidTop,
+               clamp(pos.y / LAMP_HEIGHT, 0.0, 1.0)), depthT * 0.10);
+
+    return vec4(col, 1.0);
+}
 
 void main() {
     vec2 uv = heatShimmer(vUv);
-    vec2 p = vec2((uv.x - 0.5) * 4.0 * aspect, uv.y * 4.0);
-    float f = field(p);
 
-    float alpha = smoothstep(threshold - 0.018, threshold + 0.018, f);
-    if (alpha < 0.01) discard;
+    // 2x2 rotated grid supersample — smooth edges without soft halos
+    vec2 px = vec2(dFdx(uv.x), dFdy(uv.y)) * 0.5;
+    vec4 c0 = trace(uv + vec2( 0.25,  0.75) * px);
+    vec4 c1 = trace(uv + vec2(-0.75,  0.25) * px);
+    vec4 c2 = trace(uv + vec2( 0.75, -0.25) * px);
+    vec4 c3 = trace(uv + vec2(-0.25, -0.75) * px);
 
-    float e  = 0.018;
-    float gx = field(p + vec2(e,   0.0)) - field(p - vec2(e,   0.0));
-    float gy = field(p + vec2(0.0, e  )) - field(p - vec2(0.0, e  ));
-    vec3 normal  = normalize(vec3(gx, -gy, 0.28));
-    vec3 viewDir = vec3(0.0, 0.0, 1.0);
+    vec4 result = (c0 + c1 + c2 + c3) * 0.25;
 
-    float thickness = smoothstep(threshold, threshold * 4.5, f);
-    float NdotV     = max(0.0, dot(normal, viewDir));
-    float fresnel   = pow(1.0 - NdotV, 2.5);
-
-    float gradMag  = length(vec2(gx, gy));
-    float edgeMask = clamp(gradMag * 2.5, 0.0, 1.0);
-
-    float heat = 1.0 - vUv.y;
-    float sss  = 0.28 + 0.72 * heat * heat;
-
-    vec3  lampDir  = normalize(vec3(0.0, -1.0, 0.2));
-    float wrap     = 0.55;
-    float wrapDiff = max(0.0, (dot(normal, lampDir) + wrap) / (1.0 + wrap));
-
-    float ambient    = 0.08;
-    float diffuse    = ambient + (1.0 - ambient) * wrapDiff;
-    float glowMult   = 1.0 + 1.45 * sss * (0.5 + 0.5 * thickness);
-    float totalLight = diffuse * glowMult;
-
-    vec3 colorWaxHot = vec3(1.0, 0.70, 0.18);
-    vec3 waxHot  = mix(colorWaxCore, colorWaxHot, heat * 0.72);
-    vec3 waxCool = colorWaxEdge * 0.65;
-    float colorT = clamp(wrapDiff * sss * 1.6, 0.0, 1.0);
-    vec3 waxBase = mix(waxCool, waxHot, colorT);
-
-    vec3 col = waxBase * totalLight;
-
-    vec3 rimColor = mix(colorWaxEdge, colorWaxHot, heat * 0.9);
-    col += rimColor * fresnel * (0.2 + heat * 0.7) * 1.1;
-    col += colorWaxHot * edgeMask * heat * 0.18;
-
-    vec2  rawGrad    = vec2(gx, -gy);
-    vec2  fillDir2D  = normalize(vec2(-0.7, 0.7));
-    float fillFacing = length(rawGrad) > 0.001
-        ? dot(normalize(rawGrad), fillDir2D) * 0.5 + 0.5
-        : 0.5;
-    float fillRim = edgeMask * fillFacing;
-    col += colorFillLight * fillRim * fillLightStrength * 2.5;
-    col += colorFillLight * fillFacing * fillLightStrength * 0.05;
-
-    vec3  specDir  = normalize(vec3(0.1, -0.7, 0.85));
-    vec3  hVec     = normalize(specDir + viewDir);
-    float spec     = pow(max(0.0, dot(normal, hVec)), 38.0);
-    vec3  specCol  = mix(vec3(1.0, 0.92, 0.70), vec3(1.0), 0.3);
-    col += specCol * spec * 0.32 * thickness;
-
-    vec3  specDir2 = normalize(vec3(-0.3, 0.5, 0.6));
-    vec3  hVec2    = normalize(specDir2 + viewDir);
-    float spec2    = pow(max(0.0, dot(normal, hVec2)), 10.0);
-    col += colorWaxEdge * spec2 * 0.06 * fresnel;
-
-    // ── Subsurface glow ───────────────────────────────────────────────────
-    float glow      = subsurfaceGlow(p);
-    float glowNorm  = clamp(glow, 0.0, 3.0) / 3.0;
-    float glowWhite = clamp(glow * 1.2, 0.0, 1.0);
-    vec3  glowTint  = mix(colorWaxEdge, colorWaxCore, glowNorm);
-          glowTint  = mix(glowTint, vec3(1.0), glowWhite * glowWhite);
-    col += glowTint * glow * SSS_STRENGTH * (0.6 + 1.5 * thickness);
-    // ─────────────────────────────────────────────────────────────────────
-
-    // ── Caustic light patches ─────────────────────────────────────────────
-    // Caustic sample coordinate is built in three steps so patches follow
-    // the blob's curved 3D surface instead of lying flat in screen space:
-    //
-    // 1. World position p — patches are anchored to the blob geometry.
-    //
-    // 2. Normal warp: displace by normal.xy scaled by (1 - NdotV).
-    //    NdotV is 1 at the very top and 0 at the silhouette edge.
-    //    Multiplying by (1-NdotV) means the warp is zero at the crown
-    //    (caustic pattern is undistorted there, as if light hits straight on)
-    //    and maximum at the sides (pattern stretches/rotates as it wraps
-    //    around the curve — matching how real projected caustics distort on
-    //    a rounded surface). This gives the impression of the pattern
-    //    following the 3D form without any actual 3D math.
-    //
-    // 3. Layer seed — a large per-layer offset so back / middle / front
-    //    each sample an uncorrelated region of the noise field, ensuring
-    //    every layer shows a visibly different pattern.
-
-    float normalWarpStrength = 0.55;
-    vec2  normalWarp = normal.xy * (1.0 - NdotV) * normalWarpStrength;
-    vec2  causticP   = p + normalWarp + layerSeed();
-
-    float caustic = causticValue(causticP, time);
-
-    // Surface receptivity: top-facing, interior, non-edge gets brightest patches.
-    float receptivity = NdotV * NdotV
-                      * (0.5 + 0.5 * thickness)
-                      * (1.0 - edgeMask * 0.7);
-
-    // Tint: warm near-white with a blush of waxCore, slightly hotter near lamp
-    vec3  causticTint = mix(vec3(1.0, 0.97, 0.88), colorWaxCore * 2.0, 0.15);
-          causticTint = mix(causticTint, vec3(1.0), heat * 0.25);
-
-    col += causticTint * caustic * receptivity * CAUSTIC_STRENGTH;
-    // ─────────────────────────────────────────────────────────────────────
-
-    col = col / (col + 0.55) * 1.55;
-    col = mix(col, colorFogBlend, fogAmount);
-    gl_FragColor = vec4(col, alpha);
+    if (result.a < 0.01) discard;
+    gl_FragColor = result;
 }

@@ -1,21 +1,23 @@
 import { Blob } from '../core/types';
-import { LAMP_HEIGHT } from '../core/constants';
+import { LAMP_HEIGHT, LAMP_DEPTH } from '../core/constants';
 
 let _id = 0;
 
-export function makeBlob(cx: number, cy: number, radius: number, temp: number): Blob {
+export function makeBlob(cx: number, cy: number, cz: number, radius: number, temp: number): Blob {
     return {
         id: _id++,
-        position: { x: cx, y: cy },
-        // Modest random initial velocity — enough to scatter, not enough to lurch
-        velocity:  { x: (Math.random() - 0.5) * 0.25, y: (Math.random() - 0.5) * 0.25 },
+        position: { x: cx, y: cy, z: cz },
+        velocity: {
+            x: (Math.random() - 0.5) * 0.25,
+            y: (Math.random() - 0.5) * 0.25,
+            z: (Math.random() - 0.5) * 0.08,
+        },
         temperature: temp,
         radius,
         noisePhaseX: Math.random() * Math.PI * 2,
         noisePhaseY: Math.random() * Math.PI * 2,
         noiseSpeed:  0.15 + Math.random() * 0.7,
         noiseAmp:    radius * (0.12 + Math.random() * 0.10),
-        // Start each blob's clock at a random offset so they're immediately out of phase
         privateTime: Math.random() * 1000,
     };
 }
@@ -33,6 +35,7 @@ export function spawnBlobs(count: number, aspect: number): Blob[] {
         const row = Math.floor(i / cols);
         const cx = -hw + col * cw + cw * 0.5 + (Math.random() - 0.5) * cw * 0.65;
         const cy =       row * ch + ch * 0.5 + (Math.random() - 0.5) * ch * 0.65;
+        const cz = (Math.random() - 0.5) * LAMP_DEPTH;
 
         const r = Math.random();
         let radius: number;
@@ -40,7 +43,7 @@ export function spawnBlobs(count: number, aspect: number): Blob[] {
         else if (r < 0.75) radius = 0.20 + Math.random() * 0.12;
         else               radius = 0.26 + Math.random() * 0.12;
 
-        blobs.push(makeBlob(cx, cy, radius, (1 - cy / LAMP_HEIGHT) * 0.9 + Math.random() * 0.4));
+        blobs.push(makeBlob(cx, cy, cz, radius, (1 - cy / LAMP_HEIGHT) * 0.9 + Math.random() * 0.4));
     }
     return blobs;
 }

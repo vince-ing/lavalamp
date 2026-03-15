@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PALETTE, LAYER_BLOB_COUNTS } from './core/config';
+import { PALETTE, BLOB_COUNT } from './core/config';
 import { createLavaMaterial } from './renderer/lavaMaterial';
 import { createScene } from './renderer/scene';
 import { BlobSystem } from './simulation/blobSystem';
@@ -11,16 +11,6 @@ import './style.css';
 
 function isMobile(): boolean {
     return window.matchMedia('(pointer: coarse)').matches;
-}
-
-function scaledCounts(): typeof LAYER_BLOB_COUNTS {
-    if (!isMobile()) return { ...LAYER_BLOB_COUNTS };
-    const scale = 0.6;  // 40% fewer blobs on mobile
-    return {
-        back:   Math.max(1, Math.round(LAYER_BLOB_COUNTS.back   * scale)),
-        middle: Math.max(1, Math.round(LAYER_BLOB_COUNTS.middle * scale)),
-        front:  Math.max(1, Math.round(LAYER_BLOB_COUNTS.front  * scale)),
-    };
 }
 
 function buildGradient(top: string, bottom: string): string {
@@ -45,33 +35,21 @@ function applyDynamicGradient(top = PALETTE.fluidTop, bottom = PALETTE.fluidBott
 function bootstrap() {
     applyDynamicGradient();
 
-    const matBack  = createLavaMaterial('back');
-    const matMid   = createLavaMaterial('middle');
-    const matFront = createLavaMaterial('front');
-    const materials = [matBack, matMid, matFront];
+    const material     = createLavaMaterial();
+    const sceneContext = createScene(material);
+    const canvas       = sceneContext.renderer.domElement;
 
-    const sceneContext = createScene(materials);
-    const canvas = sceneContext.renderer.domElement;
-
-    // GlowLayer canvas must be inserted BEFORE the Three.js canvas so it sits
-    // behind it in the stacking order. We create it first, then append the
-    // WebGL canvas on top.
-    const glowLayer = new GlowLayer();
-
-    // Three.js canvas sits on top of the glow layer
+    const glowLayer    = new GlowLayer();
     canvas.style.position = 'fixed';
-    canvas.style.inset = '0';
-    canvas.style.zIndex = '1';
+    canvas.style.inset    = '0';
+    canvas.style.zIndex   = '1';
     document.body.appendChild(canvas);
 
-    const counts = scaledCounts();
-    const sysBack  = new BlobSystem(counts.back);
-    const sysMid   = new BlobSystem(counts.middle);
-    const sysFront = new BlobSystem(counts.front);
-    const blobSystems = [sysBack, sysMid, sysFront];
+    const count      = isMobile() ? Math.round(BLOB_COUNT * 0.6) : BLOB_COUNT;
+    const blobSystem = new BlobSystem(count);
 
     const input = new InputController(canvas);
-    const { onResize } = startLoop(sceneContext, blobSystems, materials, input, glowLayer);
+    const { onResize } = startLoop(sceneContext, blobSystem, material, input, glowLayer);
 
     const menu = new ColorMenu((state: ColorState) => {
         const waxEdge     = new THREE.Color(state.waxEdge);
@@ -80,16 +58,12 @@ function bootstrap() {
         const fluidBottom = new THREE.Color(state.fluidBottom);
         const fillLight   = new THREE.Color(state.fillLight);
 
-        for (const mat of materials) {
-            mat.uniforms.colorWaxEdge.value     = waxEdge;
-            mat.uniforms.colorWaxCore.value     = waxCore;
-            mat.uniforms.colorFluidTop.value    = fluidTop;
-            mat.uniforms.colorFluidBottom.value = fluidBottom;
-            mat.uniforms.colorFogBlend.value    = fluidBottom;
-            mat.uniforms.colorFillLight.value   = fillLight;
-        }
+        material.uniforms.colorWaxEdge.value     = waxEdge;
+        material.uniforms.colorWaxCore.value     = waxCore;
+        material.uniforms.colorFluidTop.value    = fluidTop;
+        material.uniforms.colorFluidBottom.value = fluidBottom;
+        material.uniforms.colorFillLight.value   = fillLight;
 
-        // Keep glow layer colours in sync with the colour picker
         glowLayer.waxCoreColor.copy(waxCore);
         glowLayer.fluidBottomColor.copy(fluidBottom);
         glowLayer.fluidTopColor.copy(fluidTop);
@@ -103,16 +77,12 @@ function bootstrap() {
 
     window.addEventListener('keydown', (e) => {
         if (e.key === 'f' || e.key === 'F') {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen()
-                    .catch(err => console.error('fullscreen failed:', err));
-            } else {
+            if (!document.fullscreenElement)
+                document.documentElement.requestFullscreen().catch(console.error);
+            else
                 document.exitFullscreen();
-            }
         }
-        if (e.key === 'h' || e.key === 'H') {
-            menu.toggle();
-        }
+        if (e.key === 'h' || e.key === 'H') menu.toggle();
     });
 }
 

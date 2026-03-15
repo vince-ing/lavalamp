@@ -7,10 +7,10 @@ import { GlowLayer } from '../renderer/glowLayer';
 
 export function startLoop(
     sceneContext: SceneContext,
-    blobSystems: BlobSystem[],
-    materials: THREE.ShaderMaterial[],
+    blobSystem: BlobSystem,
+    material: THREE.ShaderMaterial,
     inputController?: InputController,
-    glowLayer?: GlowLayer
+    glowLayer?: GlowLayer,
 ): { onResize: (w: number, h: number) => void } {
     const { scene, camera, renderer } = sceneContext;
     let lastTime = performance.now();
@@ -27,26 +27,18 @@ export function startLoop(
         const height = renderer.domElement.height || 1;
         const aspect = width / height;
 
-        if (inputController && blobSystems.length > 0) {
-            inputController.update(blobSystems[blobSystems.length - 1]);
-        }
+        if (inputController) inputController.update(blobSystem);
 
-        blobSystems.forEach((blobSystem, index) => {
-            blobSystem.update(dt, t, aspect);
+        blobSystem.update(dt, t, aspect);
 
-            const material = materials[index];
-            material.uniforms.blobs.value      = blobSystem.getSeedPositions();
-            material.uniforms.radii.value      = blobSystem.getSeedRadii();
-            material.uniforms.velocities.value = blobSystem.getSeedVelocities();
-            material.uniforms.blobCount.value  = blobSystem.getSeedCount();
-            material.uniforms.time.value       = t;
-            material.uniforms.aspect.value     = aspect;
-        });
+        material.uniforms.blobs.value      = blobSystem.getSeedPositions();
+        material.uniforms.radii.value      = blobSystem.getSeedRadii();
+        material.uniforms.velocities.value = blobSystem.getSeedVelocities();
+        material.uniforms.blobCount.value  = blobSystem.getSeedCount();
+        material.uniforms.time.value       = t;
+        material.uniforms.aspect.value     = aspect;
 
-        // Draw background glow behind the Three.js canvas
-        if (glowLayer) {
-            glowLayer.render(dt, t, blobSystems);
-        }
+        if (glowLayer) glowLayer.render(dt, t, [blobSystem]);
 
         bloom.render(renderer, scene, camera);
     }
