@@ -182,10 +182,11 @@ void main() {
 
     vec3 waxLit    = vec3(0.243, 0.694, 1);   // slightly less bright — waxy not glossy
     vec3 waxShadow = vec3(0.09, 0.071, 0.62);
-    waxShadow = mix(waxShadow, vec3(0.0, 0.95, 0.80) * 1.2, (1.0 - heightT) * 0.9);
+    waxShadow = mix(waxShadow, vec3(0.0, 1.0, 0.7) * 1.0, smoothstep(0.0, 0.9, heightT));
+    // waxShadow = mix(waxShadow, vec3(0.0, 0.0, 0.0), smoothstep(0.4, 0.0, heightT));
     vec3 waxRim    = colorFluidBottom * 0.35 + colorWaxEdge * 0.15;
 
-    float shadowBlend = clamp(darkFace * 1.5, 0.0, 1.0);
+    float shadowBlend = smoothstep(0.0, 1.0, darkFace * 1.2);
     vec3  waxBase     = mix(waxLit, waxShadow, shadowBlend);
     waxBase = mix(waxBase, waxRim, fresnel * 0.68);
 
