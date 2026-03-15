@@ -2,20 +2,15 @@ import * as THREE from 'three';
 import { SceneContext } from '../core/types';
 import { BlobSystem } from '../simulation/blobSystem';
 import { InputController } from '../interaction/inputController';
-import { BloomPass } from '../renderer/bloomPass';
-import { GlowLayer } from '../renderer/glowLayer';
 
 export function startLoop(
     sceneContext: SceneContext,
     blobSystem: BlobSystem,
     material: THREE.ShaderMaterial,
     inputController?: InputController,
-    glowLayer?: GlowLayer,
 ): { onResize: (w: number, h: number) => void } {
     const { scene, camera, renderer } = sceneContext;
     let lastTime = performance.now();
-
-    const bloom = new BloomPass(window.innerWidth, window.innerHeight);
 
     function animate(currentTime: number) {
         requestAnimationFrame(animate);
@@ -38,9 +33,7 @@ export function startLoop(
         material.uniforms.time.value       = t;
         material.uniforms.aspect.value     = aspect;
 
-        if (glowLayer) glowLayer.render(dt, t, [blobSystem]);
-
-        bloom.render(renderer, scene, camera);
+        renderer.render(scene, camera);
     }
 
     requestAnimationFrame(animate);
@@ -48,8 +41,6 @@ export function startLoop(
     return {
         onResize: (w: number, h: number) => {
             renderer.setSize(w, h);
-            bloom.resize(w, h);
-            if (glowLayer) glowLayer.resize(w, h);
         }
     };
 }

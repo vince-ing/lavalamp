@@ -1,15 +1,15 @@
 import { Blob } from '../core/types';
 import { spawnBlobs } from './blob';
 import { updateBlob, applyRepulsion } from './physics';
-import { MAX_BLOBS, LAMP_HEIGHT, LAMP_DEPTH } from '../core/constants';
+import { MAX_BLOBS, LAMP_HEIGHT } from '../core/constants';
 
 const VEL_SMOOTH = 3.0;
 
 export class BlobSystem {
     blobs: Blob[];
-    private seedPos:     Float32Array;  // x,y,z per blob
+    private seedPos:     Float32Array;
     private seedRad:     Float32Array;
-    private seedVel:     Float32Array;  // vx,vy for squish
+    private seedVel:     Float32Array;
     private smoothedVel: { x: number; y: number }[];
 
     constructor(count: number) {
@@ -22,11 +22,16 @@ export class BlobSystem {
         this.seedRad     = new Float32Array(MAX_BLOBS);
         this.seedVel     = new Float32Array(MAX_BLOBS * 2);
         this.smoothedVel = this.blobs.map(b => ({ x: b.velocity.x, y: b.velocity.y }));
+
+        // Pin all blobs to z=0 — single layer, no depth
+        for (const b of this.blobs) {
+            b.position.z = 0;
+            b.velocity.z = 0;
+        }
     }
 
     update(dt: number, time: number, aspect: number): void {
         const hw = (LAMP_HEIGHT * aspect) / 2;
-        const hz = LAMP_DEPTH / 2;
         const clampedDt = Math.min(dt, 0.04);
 
         for (const b of this.blobs) updateBlob(b, clampedDt, time);
@@ -35,19 +40,18 @@ export class BlobSystem {
         for (const [i, b] of this.blobs.entries()) {
             b.position.x += b.velocity.x * clampedDt;
             b.position.y += b.velocity.y * clampedDt;
-            b.position.z += b.velocity.z * clampedDt;
+            // z stays 0
+            b.position.z = 0;
+            b.velocity.z = 0;
 
             const m = b.radius * 0.4;
             if (b.position.x < -hw + m) { b.position.x = -hw + m; b.velocity.x =  Math.abs(b.velocity.x) * 0.5; }
             if (b.position.x >  hw - m) { b.position.x =  hw - m; b.velocity.x = -Math.abs(b.velocity.x) * 0.5; }
             if (b.position.y < m)               { b.position.y = m;               b.velocity.y =  Math.abs(b.velocity.y) * 0.5; }
             if (b.position.y > LAMP_HEIGHT - m) { b.position.y = LAMP_HEIGHT - m; b.velocity.y = -Math.abs(b.velocity.y) * 0.5; }
-            if (b.position.z < -hz) { b.position.z = -hz; b.velocity.z =  Math.abs(b.velocity.z) * 0.5; }
-            if (b.position.z >  hz) { b.position.z =  hz; b.velocity.z = -Math.abs(b.velocity.z) * 0.5; }
 
             b.velocity.x *= 0.94;
             b.velocity.y *= 0.94;
-            b.velocity.z *= 0.96;
 
             const alpha = 1 - Math.exp(-VEL_SMOOTH * clampedDt);
             const sv = this.smoothedVel[i];
@@ -59,7 +63,7 @@ export class BlobSystem {
 
             this.seedPos[i * 3]     = b.position.x + wx;
             this.seedPos[i * 3 + 1] = b.position.y + wy;
-            this.seedPos[i * 3 + 2] = b.position.z;
+            this.seedPos[i * 3 + 2] = 0.0;
             this.seedRad[i]         = b.radius;
             this.seedVel[i * 2]     = sv.x;
             this.seedVel[i * 2 + 1] = sv.y;
