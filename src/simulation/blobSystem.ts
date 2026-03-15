@@ -30,7 +30,9 @@ export class BlobSystem {
         for (let i = 0; i < count; i++) {
             const cx = (Math.random() - 0.5) * hw * 1.6;
             const cy = Math.random() * LAMP_HEIGHT;
-            const r  = 0.30 + Math.random() * 0.15;
+            const isMobile = window.matchMedia('(pointer: coarse)').matches;
+            const sizeScale = isMobile ? 0.85 : 1.0;
+            const r  = 0.30 + Math.random() * 0.15 * sizeScale;
             blobs.push(makeBlob(cx, cy, 0, r, Math.random()));
         }
         return blobs;
