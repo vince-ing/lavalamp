@@ -9,11 +9,11 @@ export interface ColorState {
 }
 
 const DEFAULTS: ColorState = {
-    waxEdge:     '#fb008e',
-    waxCore:     '#c644c2',
-    fluidTop:    '#050a1f',
-    fluidBottom: '#2656a3',
-    fillLight:   '#00eeff',
+    waxEdge:     '#1a1060',   // deep indigo silhouette
+    waxCore:     '#cce0ff',   // pale blue-white wax
+    fluidTop:    '#020510',   // near-black
+    fluidBottom: '#110840',   // rich indigo
+    fillLight:   '#00e8d5',   // cyan lamp backlight
 };
 
 const LABELS: Record<keyof ColorState, string> = {
@@ -53,66 +53,61 @@ export class ColorMenu {
             left: 50%;
             transform: translate(-50%, -50%) translateY(12px);
             z-index: 1000;
-            background: rgba(4, 8, 28, 0.82);
+            background: rgba(2, 5, 16, 0.88);
             backdrop-filter: blur(24px);
             -webkit-backdrop-filter: blur(24px);
-            border: 1px solid rgba(255,255,255,0.08);
+            border: 1px solid rgba(0, 232, 213, 0.12);
             border-radius: 20px;
             padding: 32px 36px 28px;
             min-width: 320px;
-            box-shadow: 0 8px 64px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06);
+            box-shadow: 0 8px 64px rgba(0,0,0,0.8), 0 0 40px rgba(0,232,213,0.06), inset 0 1px 0 rgba(255,255,255,0.06);
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.22s ease, transform 0.22s ease;
             font-family: 'DM Sans', 'SF Pro Display', system-ui, sans-serif;
         `;
 
-        // Title
         const title = document.createElement('div');
         title.textContent = 'COLORS';
         title.style.cssText = `
             font-size: 11px;
             font-weight: 600;
             letter-spacing: 0.18em;
-            color: rgba(255,255,255,0.35);
+            color: rgba(0, 232, 213, 0.5);
             margin-bottom: 24px;
             user-select: none;
         `;
         panel.appendChild(title);
 
-        // Color rows
         (Object.keys(DEFAULTS) as (keyof ColorState)[]).forEach(key => {
             panel.appendChild(this.buildRow(key));
         });
 
-        // Divider
         const divider = document.createElement('div');
-        divider.style.cssText = `height:1px;background:rgba(255,255,255,0.07);margin:20px 0 18px;`;
+        divider.style.cssText = `height:1px;background:rgba(0,232,213,0.08);margin:20px 0 18px;`;
         panel.appendChild(divider);
 
-        // Reset button
         const reset = document.createElement('button');
         reset.textContent = 'Reset to defaults';
         reset.style.cssText = `
             width: 100%;
             padding: 10px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(0,232,213,0.05);
+            border: 1px solid rgba(0,232,213,0.12);
             border-radius: 10px;
-            color: rgba(255,255,255,0.5);
+            color: rgba(0,232,213,0.45);
             font-size: 12px;
             letter-spacing: 0.06em;
             cursor: pointer;
             transition: background 0.15s, color 0.15s;
             font-family: inherit;
         `;
-        reset.onmouseenter = () => { reset.style.background = 'rgba(255,255,255,0.1)'; reset.style.color = 'rgba(255,255,255,0.9)'; };
-        reset.onmouseleave = () => { reset.style.background = 'rgba(255,255,255,0.05)'; reset.style.color = 'rgba(255,255,255,0.5)'; };
+        reset.onmouseenter = () => { reset.style.background = 'rgba(0,232,213,0.10)'; reset.style.color = 'rgba(0,232,213,0.9)'; };
+        reset.onmouseleave = () => { reset.style.background = 'rgba(0,232,213,0.05)'; reset.style.color = 'rgba(0,232,213,0.45)'; };
         reset.onclick = () => {
             this.current = { ...DEFAULTS };
             panel.querySelectorAll<HTMLInputElement>('input[type=color]').forEach(inp => {
                 inp.value = this.current[inp.dataset.key as keyof ColorState];
-                // Update swatch
                 const swatch = inp.parentElement as HTMLElement;
                 swatch.style.background = inp.value;
                 swatch.style.boxShadow = `0 0 14px 3px ${inp.value}99`;
@@ -121,10 +116,9 @@ export class ColorMenu {
         };
         panel.appendChild(reset);
 
-        // Hint
         const hint = document.createElement('div');
         hint.textContent = 'Press H to close';
-        hint.style.cssText = `text-align:center;margin-top:14px;font-size:11px;color:rgba(255,255,255,0.18);user-select:none;letter-spacing:0.06em;`;
+        hint.style.cssText = `text-align:center;margin-top:14px;font-size:11px;color:rgba(0,232,213,0.2);user-select:none;letter-spacing:0.06em;`;
         panel.appendChild(hint);
 
         return panel;
@@ -136,7 +130,7 @@ export class ColorMenu {
 
         const label = document.createElement('span');
         label.textContent = LABELS[key];
-        label.style.cssText = `font-size:13px;color:rgba(255,255,255,0.7);user-select:none;letter-spacing:0.02em;`;
+        label.style.cssText = `font-size:13px;color:rgba(255,255,255,0.65);user-select:none;letter-spacing:0.02em;`;
 
         const swatchWrap = document.createElement('label');
         swatchWrap.style.cssText = `
@@ -146,7 +140,7 @@ export class ColorMenu {
             cursor: pointer;
             display: block;
             box-shadow: 0 0 12px 2px ${this.current[key]}88;
-            border: 2px solid rgba(255,255,255,0.15);
+            border: 2px solid rgba(255,255,255,0.12);
             transition: box-shadow 0.2s, transform 0.15s;
             background: ${this.current[key]};
             flex-shrink: 0;

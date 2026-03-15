@@ -2,20 +2,24 @@ import * as THREE from 'three';
 import { SceneContext } from '../core/types';
 import { createCamera } from './camera';
 
-export function createScene(material: THREE.ShaderMaterial): SceneContext {
+export function createScene(materials: THREE.ShaderMaterial[]): SceneContext {
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    // 1.5 is a good balance: noticeably crisper than 1.0 on retina,
-    // but only 2.25x pixel cost vs 4x at ratio 2.
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 
-    const scene    = new THREE.Scene();
-    const camera   = createCamera();
+    const scene  = new THREE.Scene();
+    const camera = createCamera();
     camera.position.z = 1;
 
     const geometry = new THREE.PlaneGeometry(2, 2);
-    const mesh     = new THREE.Mesh(geometry, material);
-    scene.add(mesh);
+    const meshes: THREE.Mesh[] = [];
 
-    return { scene, camera, renderer, mesh };
+    materials.forEach((material, index) => {
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.z = (index - materials.length + 1) * 0.1;
+        scene.add(mesh);
+        meshes.push(mesh);
+    });
+
+    return { scene, camera, renderer, meshes };
 }

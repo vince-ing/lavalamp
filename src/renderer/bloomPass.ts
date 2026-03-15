@@ -6,15 +6,20 @@ import {
 } from '../shaders/bloom';
 
 export class BloomPass {
-    private rtScene:  THREE.WebGLRenderTarget;
-    private rtBlurH:  THREE.WebGLRenderTarget;
-    private rtBlurV:  THREE.WebGLRenderTarget;
+    private rtScene:   THREE.WebGLRenderTarget;
+    private rtBlurH:   THREE.WebGLRenderTarget;
+    private rtBlurV:   THREE.WebGLRenderTarget;
+    // Second (wider) blur pass for the broad halo
+    private rtBlurH2:  THREE.WebGLRenderTarget;
+    private rtBlurV2:  THREE.WebGLRenderTarget;
 
     private matBlurH:     THREE.ShaderMaterial;
     private matBlurV:     THREE.ShaderMaterial;
+    private matBlurH2:    THREE.ShaderMaterial;
+    private matBlurV2:    THREE.ShaderMaterial;
     private matComposite: THREE.ShaderMaterial;
 
-    private quadGeo: THREE.PlaneGeometry;
+    private quadGeo:   THREE.PlaneGeometry;
     private quadScene: THREE.Scene;
     private quadCam:   THREE.OrthographicCamera;
 
@@ -25,34 +30,45 @@ export class BloomPass {
             format: THREE.RGBAFormat,
         };
 
-        // Render blobs at full res, blur at half res to save GPU
-        this.rtScene = new THREE.WebGLRenderTarget(width, height, opts);
-        this.rtBlurH = new THREE.WebGLRenderTarget(width >> 1, height >> 1, opts);
-        this.rtBlurV = new THREE.WebGLRenderTarget(width >> 1, height >> 1, opts);
+        this.rtScene  = new THREE.WebGLRenderTarget(width,        height,        opts);
+        // Tight bloom at half res
+        this.rtBlurH  = new THREE.WebGLRenderTarget(width >> 1,   height >> 1,   opts);
+        this.rtBlurV  = new THREE.WebGLRenderTarget(width >> 1,   height >> 1,   opts);
+        // Wide halo at quarter res — much cheaper, naturally blurrier
+        this.rtBlurH2 = new THREE.WebGLRenderTarget(width >> 2,   height >> 2,   opts);
+        this.rtBlurV2 = new THREE.WebGLRenderTarget(width >> 2,   height >> 2,   opts);
 
-        this.matBlurH = new THREE.ShaderMaterial({
-            uniforms: {
-                tDiffuse:   { value: this.rtScene.texture },
-                resolution: { value: new THREE.Vector2(width >> 1, height >> 1) },
-            },
-            vertexShader:   blurVertH,
-            fragmentShader: blurFragH,
-        });
+        const makeBlurH = (src: THREE.Texture, w: number, h: number) =>
+            new THREE.ShaderMaterial({
+                uniforms: {
+                    tDiffuse:   { value: src },
+                    resolution: { value: new THREE.Vector2(w, h) },
+                },
+                vertexShader:   blurVertH,
+                fragmentShader: blurFragH,
+            });
 
-        this.matBlurV = new THREE.ShaderMaterial({
-            uniforms: {
-                tDiffuse:   { value: this.rtBlurH.texture },
-                resolution: { value: new THREE.Vector2(width >> 1, height >> 1) },
-            },
-            vertexShader:   blurVertV,
-            fragmentShader: blurFragV,
-        });
+        const makeBlurV = (src: THREE.Texture, w: number, h: number) =>
+            new THREE.ShaderMaterial({
+                uniforms: {
+                    tDiffuse:   { value: src },
+                    resolution: { value: new THREE.Vector2(w, h) },
+                },
+                vertexShader:   blurVertV,
+                fragmentShader: blurFragV,
+            });
+
+        this.matBlurH  = makeBlurH(this.rtScene.texture,  width >> 1, height >> 1);
+        this.matBlurV  = makeBlurV(this.rtBlurH.texture,  width >> 1, height >> 1);
+        // Wide pass reads from half-res blur result → downsamples further
+        this.matBlurH2 = makeBlurH(this.rtBlurV.texture,  width >> 2, height >> 2);
+        this.matBlurV2 = makeBlurV(this.rtBlurH2.texture, width >> 2, height >> 2);
 
         this.matComposite = new THREE.ShaderMaterial({
             uniforms: {
-                tBase:        { value: this.rtScene.texture },
-                tBloom:       { value: this.rtBlurV.texture },
-                bloomStrength: { value: 0.38 },
+                tBase:         { value: this.rtScene.texture  },
+                tBloom:        { value: this.rtBlurV2.texture },
+                bloomStrength: { value: 0.28 },
             },
             vertexShader:   compositeVert,
             fragmentShader: compositeFrag,
@@ -60,38 +76,38 @@ export class BloomPass {
             depthWrite: false,
         });
 
-        // Single full-screen quad reused for all passes
         this.quadGeo   = new THREE.PlaneGeometry(2, 2);
         this.quadScene = new THREE.Scene();
         this.quadCam   = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     }
 
     resize(width: number, height: number): void {
-        this.rtScene.setSize(width, height);
-        this.rtBlurH.setSize(width >> 1, height >> 1);
-        this.rtBlurV.setSize(width >> 1, height >> 1);
-        this.matBlurH.uniforms.resolution.value.set(width >> 1, height >> 1);
-        this.matBlurV.uniforms.resolution.value.set(width >> 1, height >> 1);
+        this.rtScene.setSize(width,       height);
+        this.rtBlurH.setSize(width >> 1,  height >> 1);
+        this.rtBlurV.setSize(width >> 1,  height >> 1);
+        this.rtBlurH2.setSize(width >> 2, height >> 2);
+        this.rtBlurV2.setSize(width >> 2, height >> 2);
+        this.matBlurH.uniforms.resolution.value.set(width >> 1,  height >> 1);
+        this.matBlurV.uniforms.resolution.value.set(width >> 1,  height >> 1);
+        this.matBlurH2.uniforms.resolution.value.set(width >> 2, height >> 2);
+        this.matBlurV2.uniforms.resolution.value.set(width >> 2, height >> 2);
     }
 
-    /** Render scene → blur → composite, writing final result to the canvas */
-    render(
-        renderer: THREE.WebGLRenderer,
-        mainScene: THREE.Scene,
-        camera: THREE.Camera,
-    ): void {
-        // 1. Render the blob scene into rtScene
+    render(renderer: THREE.WebGLRenderer, mainScene: THREE.Scene, camera: THREE.Camera): void {
+        // 1. Scene → rtScene (full res)
         renderer.setRenderTarget(this.rtScene);
         renderer.clear();
         renderer.render(mainScene, camera);
 
-        // 2. Horizontal blur: rtScene → rtBlurH
+        // 2. Tight bloom: full → half res H+V
         this.renderQuad(renderer, this.matBlurH, this.rtBlurH);
-
-        // 3. Vertical blur: rtBlurH → rtBlurV
         this.renderQuad(renderer, this.matBlurV, this.rtBlurV);
 
-        // 4. Composite base + bloom → canvas
+        // 3. Wide halo: half → quarter res H+V
+        this.renderQuad(renderer, this.matBlurH2, this.rtBlurH2);
+        this.renderQuad(renderer, this.matBlurV2, this.rtBlurV2);
+
+        // 4. Composite base + wide bloom → canvas
         renderer.setRenderTarget(null);
         renderer.clear();
         this.renderQuad(renderer, this.matComposite, null);
@@ -102,7 +118,6 @@ export class BloomPass {
         material: THREE.ShaderMaterial,
         target: THREE.WebGLRenderTarget | null,
     ): void {
-        // Swap mesh material each pass — cheaper than creating new meshes
         const mesh = new THREE.Mesh(this.quadGeo, material);
         this.quadScene.clear();
         this.quadScene.add(mesh);
@@ -114,8 +129,12 @@ export class BloomPass {
         this.rtScene.dispose();
         this.rtBlurH.dispose();
         this.rtBlurV.dispose();
+        this.rtBlurH2.dispose();
+        this.rtBlurV2.dispose();
         this.matBlurH.dispose();
         this.matBlurV.dispose();
+        this.matBlurH2.dispose();
+        this.matBlurV2.dispose();
         this.matComposite.dispose();
         this.quadGeo.dispose();
     }

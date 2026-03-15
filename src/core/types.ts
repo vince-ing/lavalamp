@@ -17,5 +17,5 @@ export interface SceneContext {
     scene: THREE.Scene;
     camera: THREE.Camera;
     renderer: THREE.WebGLRenderer;
-    mesh: THREE.Mesh;
+    meshes: THREE.Mesh[];
 }

@@ -1,5 +1,5 @@
 import { Blob } from '../core/types';
-import { LAMP_HEIGHT, LAMP_DEPTH } from '../core/constants';
+import { LAMP_HEIGHT } from '../core/constants';
 
 let _id = 0;
 
@@ -7,17 +7,13 @@ export function makeBlob(cx: number, cy: number, cz: number, radius: number, tem
     return {
         id: _id++,
         position: { x: cx, y: cy, z: cz },
-        velocity: {
-            x: (Math.random() - 0.5) * 0.25,
-            y: (Math.random() - 0.5) * 0.25,
-            z: (Math.random() - 0.5) * 0.08,
-        },
+        velocity: { x: (Math.random() - 0.5) * 0.2, y: (Math.random() - 0.5) * 0.2, z: 0 },
         temperature: temp,
         radius,
         noisePhaseX: Math.random() * Math.PI * 2,
         noisePhaseY: Math.random() * Math.PI * 2,
-        noiseSpeed:  0.15 + Math.random() * 0.7,
-        noiseAmp:    radius * (0.12 + Math.random() * 0.10),
+        noiseSpeed:  0.12 + Math.random() * 0.55,   // slower — more viscous feel
+        noiseAmp:    radius * (0.10 + Math.random() * 0.08),
         privateTime: Math.random() * 1000,
     };
 }
@@ -25,25 +21,22 @@ export function makeBlob(cx: number, cy: number, cz: number, radius: number, tem
 export function spawnBlobs(count: number, aspect: number): Blob[] {
     const blobs: Blob[] = [];
     const hw = (LAMP_HEIGHT * aspect) / 2;
-    const cols = Math.ceil(Math.sqrt(count * aspect));
-    const rows = Math.ceil(count / cols);
-    const cw = (hw * 2) / cols;
-    const ch = LAMP_HEIGHT / rows;
 
     for (let i = 0; i < count; i++) {
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        const cx = -hw + col * cw + cw * 0.5 + (Math.random() - 0.5) * cw * 0.65;
-        const cy =       row * ch + ch * 0.5 + (Math.random() - 0.5) * ch * 0.65;
-        const cz = (Math.random() - 0.5) * LAMP_DEPTH;
+        // Distribute across full column, weighted toward center vertically
+        const cx = (Math.random() - 0.5) * hw * 1.7;
+        const cy = Math.random() * LAMP_HEIGHT;
 
+        // Photo shows a mix: a few large blobs, many medium, few small
         const r = Math.random();
         let radius: number;
-        if      (r < 0.35) radius = 0.17 + Math.random() * 0.08;
-        else if (r < 0.75) radius = 0.20 + Math.random() * 0.12;
-        else               radius = 0.26 + Math.random() * 0.12;
+        if      (r < 0.15) radius = 0.38 + Math.random() * 0.18;  // large
+        else if (r < 0.55) radius = 0.24 + Math.random() * 0.14;  // medium
+        else if (r < 0.85) radius = 0.16 + Math.random() * 0.10;  // small
+        else               radius = 0.09 + Math.random() * 0.07;  // tiny droplets
 
-        blobs.push(makeBlob(cx, cy, cz, radius, (1 - cy / LAMP_HEIGHT) * 0.9 + Math.random() * 0.4));
+        const temp = (1.0 - cy / LAMP_HEIGHT) * 0.85 + Math.random() * 0.3;
+        blobs.push(makeBlob(cx, cy, 0, radius, temp));
     }
     return blobs;
 }

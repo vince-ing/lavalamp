@@ -2,15 +2,20 @@ import * as THREE from 'three';
 import { SceneContext } from '../core/types';
 import { BlobSystem } from '../simulation/blobSystem';
 import { InputController } from '../interaction/inputController';
+import { BloomPass } from '../renderer/bloomPass';
+import { GlowLayer } from '../renderer/glowLayer';
 
 export function startLoop(
     sceneContext: SceneContext,
-    blobSystem: BlobSystem,
-    material: THREE.ShaderMaterial,
+    blobSystems: BlobSystem[],
+    materials: THREE.ShaderMaterial[],
     inputController?: InputController,
+    glowLayer?: GlowLayer,
 ): { onResize: (w: number, h: number) => void } {
     const { scene, camera, renderer } = sceneContext;
     let lastTime = performance.now();
+
+    const bloom = new BloomPass(window.innerWidth, window.innerHeight);
 
     function animate(currentTime: number) {
         requestAnimationFrame(animate);
@@ -22,18 +27,25 @@ export function startLoop(
         const height = renderer.domElement.height || 1;
         const aspect = width / height;
 
-        if (inputController) inputController.update(blobSystem);
+        if (inputController && blobSystems.length > 0) {
+            inputController.update(blobSystems[blobSystems.length - 1]);
+        }
 
-        blobSystem.update(dt, t, aspect);
+        blobSystems.forEach((blobSystem, index) => {
+            blobSystem.update(dt, t, aspect);
 
-        material.uniforms.blobs.value      = blobSystem.getSeedPositions();
-        material.uniforms.radii.value      = blobSystem.getSeedRadii();
-        material.uniforms.velocities.value = blobSystem.getSeedVelocities();
-        material.uniforms.blobCount.value  = blobSystem.getSeedCount();
-        material.uniforms.time.value       = t;
-        material.uniforms.aspect.value     = aspect;
+            const material = materials[index];
+            material.uniforms.blobs.value      = blobSystem.getSeedPositions();
+            material.uniforms.radii.value      = blobSystem.getSeedRadii();
+            material.uniforms.velocities.value = blobSystem.getSeedVelocities();
+            material.uniforms.blobCount.value  = blobSystem.getSeedCount();
+            material.uniforms.time.value       = t;
+            material.uniforms.aspect.value     = aspect;
+        });
 
-        renderer.render(scene, camera);
+        if (glowLayer) glowLayer.render(dt, t, blobSystems);
+
+        bloom.render(renderer, scene, camera);
     }
 
     requestAnimationFrame(animate);
@@ -41,6 +53,8 @@ export function startLoop(
     return {
         onResize: (w: number, h: number) => {
             renderer.setSize(w, h);
+            bloom.resize(w, h);
+            if (glowLayer) glowLayer.resize(w, h);
         }
     };
 }
