@@ -21,22 +21,13 @@ const float MIN_DIST    = 0.005;
 const float NDELTA      = 0.004;
 const float PI          = 3.141592;
 
-vec3 lampColor(float h) {
-    vec3 c0 = vec3(0.32, 0.48, 0.56);
-    vec3 c1 = vec3(0.12, 0.20, 0.34);
-    vec3 c2 = vec3(0.10, 0.00, 0.18);
-    if (h < 0.5) return mix(c0, c1, h * 2.0);
-    else         return mix(c1, c2, (h - 0.5) * 2.0);
-}
-
+// ── Noise helpers ─────────────────────────────────────────────────────────────
 float hash13(vec3 p) {
     return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
 }
-
 float hash12(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
-
 float vnoise(vec3 p) {
     vec3 i = floor(p);
     vec3 f = fract(p);
@@ -46,97 +37,18 @@ float vnoise(vec3 p) {
             mix(hash13(i+vec3(0,1,0)), hash13(i+vec3(1,1,0)), u.x), u.y),
         mix(mix(hash13(i+vec3(0,0,1)), hash13(i+vec3(1,0,1)), u.x),
             mix(hash13(i+vec3(0,1,1)), hash13(i+vec3(1,1,1)), u.x), u.y),
-        u.z
-    );
+        u.z);
 }
 
-// ── Blob surface specks: extremely sparse, very slow ─────────────────────────
-float dustSpecks(vec3 p) {
-    vec3  cell  = floor(p * 14.0);
-    vec3  fr    = fract(p * 14.0) - 0.5;
-
-    // Very slow pulse: full cycle takes ~60-120 seconds
-    float slowTime = time * 0.000000000005;  // stretch time way out
-    float phase    = hash13(cell) * 6.2832;
-    float pulse    = 0.5 + 0.05 * sin(slowTime + phase);
-
-    float d2    = dot(fr, fr);
-    float shape = exp(-d2 * 30.0);
-
-    // Only ~3% of cells — much sparser than before
-    float exists = step(0.98, hash13(cell + 7.3));
-
-    return shape * pow(pulse, 3.0) * exists;
-}
-
-// ── Background dust: sharp + blurry layers, small, slowly drifting ───────────
-
-// Sharp pinpoint motes
-float bgDustSharp(vec2 wp) {
-    vec2 driftPos = wp;
-    driftPos.y -= time * 0.04;
-    driftPos.x += sin(time * 0.05 + wp.y * 1.1) * 0.03;
-
-    float scale = 16.0;             // fine lattice → small motes
-    vec2  cell  = floor(driftPos * scale);
-    vec2  fr    = fract(driftPos * scale) - 0.5;
-
-    // Random sub-cell jitter so motes aren't on a grid
-    float ox = hash12(cell)                    - 0.5;
-    float oy = hash12(cell + vec2(3.7, 8.1))   - 0.5;
-    vec2  d  = fr - vec2(ox, oy) * 0.38;
-
-    float d2    = dot(d, d);
-    // Tight falloff → sharp pinpoint
-    float shape = exp(-d2 * 55.0);
-
-    float phase = hash12(cell + vec2(1.3, 5.7)) * 6.2832;
-    float rate  = 0.03 + hash12(cell + vec2(9.1, 2.3)) * 0.06;
-    float pulse = 0.5 + 0.5 * sin(time * rate + phase);
-
-    // ~10% occupancy
-    float exists = step(0.975, hash12(cell + vec2(4.4, 6.6)));
-
-    return shape * pow(pulse, 2.0) * exists;
-}
-
-// Soft blurry motes — same idea but loose falloff, different lattice phase
-float bgDustBlurry(vec2 wp) {
-    vec2 driftPos = wp;
-    // Slightly different drift direction and speed from sharp layer
-    driftPos.y -= time * 0.028;
-    driftPos.x += sin(time * 0.038 + wp.y * 0.7 + 2.1) * 0.045;
-
-    float scale = 4.0;              // coarser lattice → more spread out
-    vec2  cell  = floor(driftPos * scale);
-    vec2  fr    = fract(driftPos * scale) - 0.5;
-
-    float ox = hash12(cell + vec2(5.1, 1.9))   - 0.5;
-    float oy = hash12(cell + vec2(2.3, 7.4))   - 0.5;
-    vec2  d  = fr - vec2(ox, oy) * 0.40;
-
-    float d2    = dot(d, d);
-    // Wide falloff → soft halo
-    float shape = exp(-d2 * 20.0);
-
-    float phase = hash12(cell + vec2(6.2, 3.8)) * 6.2832;
-    float rate  = 0.02 + hash12(cell + vec2(1.7, 8.5)) * 0.04;
-    float pulse = 0.5 + 0.5 * sin(time * rate + phase);
-
-    // ~12% occupancy
-    float exists = step(0.93, hash12(cell + vec2(7.1, 0.3)));
-
-    return shape * pow(pulse, 2.0) * exists;
-}
-
-// ── Surface undulation ────────────────────────────────────────────────────────
+// ── Surface undulation (unchanged from original) ──────────────────────────────
 float surfaceWave(vec3 p) {
     vec3  q = p * 3.8 + vec3(time * 0.022, time * 0.016, time * 0.011);
-    float n = vnoise(q)        * 0.65
+    float n = vnoise(q) * 0.65
             + vnoise(q * 1.9 + vec3(3.7, 8.1, 2.4)) * 0.35;
     return pow(clamp(n, 0.0, 1.0), 8.0);
 }
 
+// ── SDF (unchanged from original) ────────────────────────────────────────────
 float rawDensity(vec3 p) {
     float den = 0.0;
     for (int i = 0; i < 30; i++) {
@@ -167,114 +79,168 @@ vec3 sceneNormal(vec3 p) {
     ));
 }
 
-float estimateThickness(vec3 hitPos, vec3 lightDir) {
+// ── Thickness: march toward the bottom lamp through the wax ───────────────────
+float estimateThickness(vec3 hitPos, vec3 towardLamp) {
     float thickness = 0.0;
     vec3  p = hitPos;
-    float stepSize = 0.08;
-    for (int i = 0; i < 8; i++) {
-        p += lightDir * stepSize;
+    for (int i = 0; i < 10; i++) {
+        p += towardLamp * 0.07;
         float den = rawDensity(p);
-        thickness += clamp(den - 0.333, 0.0, 2.0) * stepSize;
+        thickness += clamp(den - 0.333, 0.0, 2.0) * 0.07;
     }
     return thickness;
 }
 
-vec3 lighting(vec3 n, vec3 l, vec3 rd,
-              vec3 kl, vec3 kd, vec3 ks, vec3 ksr,
-              float km, float kn) {
-    float ndl  = dot(n, l);
-    float pndl = clamp(ndl, 0.0, 1.0);
-    vec3  sss  = 0.75 * exp(-1.6 * abs(ndl) / (ksr + 0.001));
-    vec3  h    = normalize(l - rd);
-    float ndh  = dot(n, h);
-    float g    = ndh * ndh * (km * km - 1.0) + 1.0;
-    float ggx  = km * km / (PI * g * g);
-    float fre  = 1.0 + dot(rd, n);
-    float f0   = (kn - 1.0) / (kn + 1.0);
-          f0   = f0 * f0;
-    float kr   = f0 + (1.0 - f0) * (1.0 - km) * (1.0 - km) * pow(fre, 5.0);
-    return kl * (pndl * (kd + kr * ggx) + kd * ks * ksr * sss);
+// ── Background dust (unchanged from original) ─────────────────────────────────
+float bgDustSharp(vec2 wp) {
+    vec2 dp   = vec2(wp.x + sin(time*0.05+wp.y*1.1)*0.03, wp.y - time*0.04);
+    vec2 cell = floor(dp * 16.0);
+    vec2 fr   = fract(dp * 16.0) - 0.5;
+    vec2 d    = fr - vec2(hash12(cell)-0.5, hash12(cell+vec2(3.7,8.1))-0.5)*0.38;
+    float shape  = exp(-dot(d,d)*55.0);
+    float pulse  = 0.5 + 0.5*sin(time*(0.03+hash12(cell+vec2(9.1,2.3))*0.06)
+                                  +hash12(cell+vec2(1.3,5.7))*6.2832);
+    return shape * pulse*pulse * step(0.975, hash12(cell+vec2(4.4,6.6)));
+}
+float bgDustBlurry(vec2 wp) {
+    vec2 dp   = vec2(wp.x + sin(time*0.038+wp.y*0.7+2.1)*0.045, wp.y - time*0.028);
+    vec2 cell = floor(dp * 4.0);
+    vec2 fr   = fract(dp * 4.0) - 0.5;
+    vec2 d    = fr - vec2(hash12(cell+vec2(5.1,1.9))-0.5, hash12(cell+vec2(2.3,7.4))-0.5)*0.40;
+    float shape  = exp(-dot(d,d)*20.0);
+    float pulse  = 0.5 + 0.5*sin(time*(0.02+hash12(cell+vec2(1.7,8.5))*0.04)
+                                  +hash12(cell+vec2(6.2,3.8))*6.2832);
+    return shape * pulse*pulse * step(0.93, hash12(cell+vec2(7.1,0.3)));
 }
 
 void main() {
-    vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
+    // uv.y = 0 at bottom of lamp, 1 at top
+    vec2  uv     = vec2(vUv.x, 1.0 - vUv.y);
     float worldX = (uv.x - 0.5) * LAMP_HEIGHT * aspect;
     float worldY = uv.y * LAMP_HEIGHT;
 
-    vec3 pos = vec3(worldX, worldY, CAM_Z);
-    vec3 ray = vec3(0.0, 0.0, 1.0);
-
+    // ── Raymarch ──────────────────────────────────────────────────────────────
+    vec3  pos    = vec3(worldX, worldY, CAM_Z);
+    vec3  ray    = vec3(0.0, 0.0, 1.0);
     float dist   = 2.0;
     float tMarch = 0.0;
     for (int i = 0; i < MAX_ITERS; i++) {
         dist = scene(pos);
         if (dist < MIN_DIST) break;
-        if (tMarch > 6.0) break;
-        float step = clamp(dist * 0.42, 0.005, 0.08);
-        pos    += ray * step;
-        tMarch += step;
+        if (tMarch > 6.0)    break;
+        float s = clamp(dist * 0.42, 0.005, 0.08);
+        pos    += ray * s;
+        tMarch += s;
     }
 
+    // ── Background ────────────────────────────────────────────────────────────
     if (dist >= MIN_DIST) {
-        float bgH    = vUv.y;
-        vec3  lc     = lampColor(bgH);
-        float bgGlow = pow(1.0 - vUv.y, 1.4);
-        float xDist  = abs(vUv.x - 0.5) * 2.0;
-        float colFoc = pow(1.0 - clamp(xDist, 0.0, 1.0), 2.5) * 0.5;
-        vec3 bg = lc * (bgGlow * 0.55 + 0.04);
-        bg += lc * colFoc * bgGlow * 0.5;
-        vec2 suv = vUv * 2.0 - 1.0;
-        suv.x   *= aspect;
-        float vig = 1.0 - clamp(dot(suv, suv) * 0.45, 0.0, 1.0);
-        bg *= 0.35 + 0.65 * vig;
+        // Deep indigo gradient — darker at top, hint of cyan glow at bottom
+        float bgT = 1.0 - uv.y;
+        vec3  bg  = mix(colorFluidTop, colorFluidBottom, bgT * bgT);
 
-        // Edge fade — motes disappear near top/bottom
-        float fadeY = smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.88, vUv.y);
+        // Cyan heat cone rising from lamp at bottom-centre
+        float cx      = uv.x - 0.5;
+        float cone    = exp(-cx*cx*22.0) * exp(-uv.y * 3.2);
+        float rimGlow = exp(-abs(abs(cx)-0.42)*28.0) * exp(-uv.y*2.0) * 0.3;
+        bg += colorFillLight * (cone * 0.5 + rimGlow) * 0.65;
 
-        // Sharp pinpoints — bright, crisp
-        float sharp  = bgDustSharp(vec2(worldX, worldY));
-        bg += vec3(0.78, 0.88, 1.00) * sharp * 0.22 * fadeY;
+        // Vignette
+        vec2  suv = vUv * 2.0 - 1.0;
+        suv.x    *= aspect;
+        float vig = 1.0 - clamp(dot(suv,suv) * 0.38, 0.0, 1.0);
+        bg *= 0.28 + 0.72 * vig;
 
-        // Blurry halos — dimmer, softer
-        float blurry = bgDustBlurry(vec2(worldX, worldY));
-        bg += vec3(0.65, 0.78, 1.00) * blurry * 0.10 * fadeY;
+        // Drifting motes
+        float fadeY = smoothstep(0.0,0.15,uv.y) * smoothstep(1.0,0.9,uv.y);
+        bg += vec3(0.55,0.85,1.00) * bgDustSharp(vec2(worldX,worldY))  * 0.18 * fadeY;
+        bg += vec3(0.45,0.72,1.00) * bgDustBlurry(vec2(worldX,worldY)) * 0.08 * fadeY;
 
         gl_FragColor = vec4(bg, 1.0);
         return;
     }
 
-    vec3  n    = sceneNormal(pos);
-    float waxH = 1.0 - clamp(pos.y / LAMP_HEIGHT, 0.0, 1.0);
-    vec3  surfColor = lampColor(waxH);
+    // ── Surface shading ───────────────────────────────────────────────────────
+    vec3 n  = sceneNormal(pos);
+    vec3 rd = ray;
 
-    vec3  kd      = surfColor * 1.1 + 0.05;
-    vec3  ks      = mix(vec3(0.4, 0.1, 0.6), vec3(0.15, 0.45, 0.6), waxH);
-    float sssBase = mix(0.3, 1.2, waxH);
-    vec3  ksr     = sssBase * (surfColor * 1.3 + 0.05);
-    float km      = 0.85;
-    float kn      = 1.45;
+    // heightT: 0 = bottom of lamp (near bulb, hot), 1 = top (cool, dark)
+    float heightT = clamp(pos.y / LAMP_HEIGHT, 0.0, 1.0);
 
-    vec3 keyL   = normalize(vec3(0.05, -1.0, 0.6));
-    vec3 keyCol = vec3(0.40, 0.58, 0.68) * 1.0;
-    vec3 rimL   = normalize(vec3(-0.3, 0.5, 0.5));
-    vec3 rimCol = vec3(0.08, 0.00, 0.16) * 0.4;
+    // Lamp is below the fluid, light travels upward.
+    // lampDir = direction FROM surface TOWARD light (pointing downward = toward lamp)
+    vec3  lampDir  = normalize(vec3(0.05, -1.0, 0.5));
+    float NdotL    = dot(n, -lampDir);    // +1 = surface faces down = lit by lamp
+    float litFace  = max(0.0,  NdotL);   // bottom belly of blob
+    float darkFace = max(0.0, -NdotL);   // top cap of blob (away from lamp)
 
-    vec3 col = lighting(n, -keyL, ray, keyCol, kd, ks, ksr, km, kn)
-             + lighting(n,  rimL, ray, rimCol, kd, ks, ksr * 0.4, km, kn);
+    float NdotV   = max(0.0, dot(n, -rd));
+    float fresnel = pow(1.0 - NdotV, 2.5);
 
-    col = 2.0 * col / (0.8 + 2.5 * col);
-    col = pow(max(col, 0.0), vec3(0.8));
+    // Thickness march toward lamp — thin = cyan SSS, thick = opaque pale
+    float thickness = estimateThickness(pos, lampDir);
+    float thinness  = exp(-thickness * 6.0);
 
-    vec3  lightDir  = normalize(vec3(0.05, -1.0, 0.6));
-    float thickness = estimateThickness(pos, -lightDir);
-    float thinness  = exp(-thickness * 7.5);
-    vec3  sssColor  = vec3(0.00, 1.00, 0.85);
-    col += sssColor * thinness * 1.75;
+    // Height attenuation — blobs at top of column receive less lamp light
+    float heightAtten = 1.0 - heightT * heightT * 0.5;
 
-    // Blob specks: 3% cells, cycle time ~60-120s, very faint
-    float speck   = dustSpecks(pos);
-    float cluster = vnoise(pos * 2.2 + vec3(time * 0.03)) * 0.6 + 0.4;
-    col += vec3(0.88, 0.94, 1.00) * speck * cluster * 0.35;
+    // ── Wax colour ────────────────────────────────────────────────────────────
+    // Hardcode pale blue-white — the actual wax material colour from the photo.
+    // We do NOT use colorWaxCore here because the uniform may be set to any
+    // colour by the user palette (e.g. purple). The wax physical colour is
+    // always pale; the fill light tints it at the edges.
+    vec3 waxLit = vec3(0.82, 0.90, 0.96);   // pale cool white
+
+    // Top shadow: dark teal matching the fluid — blobs look dark at the top
+    vec3 waxShadow = mix(colorFluidBottom * 0.55, colorFillLight * 0.08, 0.15);
+
+    // Silhouette rim: near-black indigo edge
+    vec3 waxRim = colorFluidBottom * 0.35 + colorWaxEdge * 0.15;
+
+    // shadowBlend: 0 = fully lit (bottom belly), 1 = fully dark (top cap).
+    // darkFace  = surface normal pointing away from lamp (top) → drives shadow
+    // (1-heightT) REMOVED from here — height attenuation handled in diffuse,
+    // not in the colour blend, so the gradient direction is correct.
+    float shadowBlend = clamp(darkFace * 1.5, 0.0, 1.0);
+    vec3  waxBase     = mix(waxLit, waxShadow, shadowBlend);
+
+    // Dark rim at silhouette
+    waxBase = mix(waxBase, waxRim, fresnel * 0.72);
+
+    // Cyan SSS — stronger than before: backlight bleeds cyan at thin/edge areas
+    float sssBlend = clamp(fresnel * 0.45 + thinness * 0.60, 0.0, 1.0);
+    waxBase = mix(waxBase, colorFillLight * 0.70, sssBlend * fillLightStrength * 0.85);
+
+    // ── Diffuse ───────────────────────────────────────────────────────────────
+    // litFace = 1 on bottom belly (faces lamp below), 0 on top cap
+    // heightAtten dims blobs that sit high in the column (farther from bulb)
+    float diffuse = 0.04 + litFace * 0.90;
+    diffuse      *= heightAtten;
+    vec3  col     = waxBase * clamp(diffuse, 0.0, 1.0);
+
+    // ── Cyan lamp fill ────────────────────────────────────────────────────────
+    // Direct cyan on bottom-lit face
+    col += colorFillLight * litFace * heightAtten * fillLightStrength * 0.70;
+    // SSS: cyan transmitted through thin wax — stronger now
+    col += colorFillLight * thinness * fillLightStrength * 0.75 * heightAtten;
+    // Cyan rim halo from edge backscatter
+    col += colorFillLight * fresnel * fillLightStrength * 0.25;
+
+    // ── Specular ─────────────────────────────────────────────────────────────
+    // Lamp below-forward, reflection on bottom face
+    vec3  specDir = normalize(vec3(0.05, -1.0, 0.85));
+    float spec    = pow(max(0.0, dot(n, normalize(-specDir - rd))), 68.0);
+    col += vec3(0.85, 1.0, 1.0) * spec * 0.28 * (1.0 - heightT * 0.5);
+
+    // ── Surface specks (kept from original, dimmed) ───────────────────────────
+    vec3  sc  = floor(pos * 14.0);
+    vec3  sfr = fract(pos * 14.0) - 0.5;
+    float sp  = exp(-dot(sfr,sfr)*30.0) * step(0.98, hash13(sc+7.3))
+              * (vnoise(pos*2.2 + vec3(time*0.03)) * 0.6 + 0.4);
+    col += vec3(0.88, 0.94, 1.00) * sp * 0.20;
+
+    // ── Tone map ──────────────────────────────────────────────────────────────
+    col = col / (col + 0.5) * 1.5;
 
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
