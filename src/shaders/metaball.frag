@@ -46,6 +46,65 @@ float vnoise(vec3 p) {
     );
 }
 
+float hash12(vec2 p) {
+    vec3 p3  = fract(vec3(p.xyx) * .1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+float bubbleLayer(vec2 uv, float t, vec2 scale, float speed, float focus) {
+    vec2 st = uv * scale;
+    st.y -= t * speed;
+    vec2 id = floor(st);
+    vec2 f = fract(st);
+    
+    float color = 0.0;
+    
+    // Check 3x3 neighborhood to completely eliminate boundary flickering
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 neighbor = vec2(float(x), float(y));
+            vec2 nid = id + neighbor;
+            
+            float h = hash12(nid);
+            if (h > 0.96) { // Lower overall density
+                vec2 center = vec2(hash12(nid + 13.0), hash12(nid + 17.0));
+                // Slow horizontal wobble
+                center.x += sin(t * 0.5 + h * 10.0) * 0.25; 
+                
+                vec2 diff = neighbor + center - f;
+                float d = length(diff);
+                
+                // focus: 0.0 = very out of focus (large, blurry), 1.0 = in focus (small, sharp)
+                float r = mix(0.35, 0.08, focus);
+                float blur = mix(0.9, 0.2, focus);
+                
+                float core = smoothstep(r, r * (1.0 - blur), d);
+                // Extra bloom spreading outside the core
+                float glow = smoothstep(r * 2.5, 0.0, d) * mix(0.7, 0.2, focus);
+                
+                // Smooth pulse so they don't look static
+                float pulse = sin(t * 1.5 + h * 20.0) * 0.5 + 0.5;
+                float intensity = mix(0.4, 1.0, pulse) * ((h - 0.96) / 0.04);
+                
+                color += (core + glow) * intensity;
+            }
+        }
+    }
+    return color;
+}
+
+float microBubbles(vec2 uv, float t) {
+    float b = 0.0;
+    // Layer 1: Far back. Very blurry, slow, large blobs
+    b += bubbleLayer(uv, t, vec2(15.0, 25.0), 0.2, 0.0) * 0.4;
+    // Layer 2: Mid-ground. Somewhat blurry, medium speed
+    b += bubbleLayer(uv, t, vec2(25.0, 45.0), 0.4, 0.5) * 0.6;
+    // Layer 3: Foreground. Sharp, fast, small
+    b += bubbleLayer(uv, t, vec2(40.0, 70.0), 0.7, 1.0) * 0.8;
+    return b;
+}
+
 float sparseBumps(vec3 p) {
     vec3 q = p * 3.8 + vec3(time * 0.022, time * 0.016, time * 0.011);
     float n = vnoise(q)        * 0.65
@@ -147,6 +206,15 @@ void main() {
         suv.x   *= aspect;
         float vig = 1.0 - clamp(dot(suv, suv) * 0.45, 0.0, 1.0);
         bg *= 0.35 + 0.65 * vig;
+        
+        // --- Suspended Micro-Bubbles ---
+        // Pass aspect-corrected UVs to prevent horizontal stretching
+        vec2 aspectUv = vec2(vUv.x * aspect, vUv.y);
+        float bubbles = microBubbles(aspectUv, time);
+        
+        // Blend with the fill light for the neon glow
+        bg += bubbles * mix(lc, colorFillLight, 0.7) * 1.5;
+        
         gl_FragColor = vec4(bg, 1.0);
         return;
     }
