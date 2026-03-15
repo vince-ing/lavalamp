@@ -1,5 +1,5 @@
 import { Blob } from '../core/types';
-import { spawnBlobs } from './blob';
+import { makeBlob } from './blob';
 import { updateBlob, applyRepulsion } from './physics';
 import { MAX_BLOBS, LAMP_HEIGHT } from '../core/constants';
 
@@ -13,21 +13,27 @@ export class BlobSystem {
     private smoothedVel: { x: number; y: number }[];
 
     constructor(count: number) {
-        const w = window.innerWidth || 1;
-        const h = window.innerHeight || 1;
-        const aspect = w / h;
-
-        this.blobs       = spawnBlobs(count, aspect);
+        this.blobs       = this._spawn(count);
         this.seedPos     = new Float32Array(MAX_BLOBS * 3);
         this.seedRad     = new Float32Array(MAX_BLOBS);
         this.seedVel     = new Float32Array(MAX_BLOBS * 2);
         this.smoothedVel = this.blobs.map(b => ({ x: b.velocity.x, y: b.velocity.y }));
+    }
 
-        // Pin all blobs to z=0 — single layer, no depth
-        for (const b of this.blobs) {
-            b.position.z = 0;
-            b.velocity.z = 0;
+    private _spawn(count: number): Blob[] {
+        const blobs: Blob[] = [];
+        const w = window.innerWidth || 1;
+        const h = window.innerHeight || 1;
+        const aspect = w / h;
+        const hw = (LAMP_HEIGHT * aspect) / 2;
+
+        for (let i = 0; i < count; i++) {
+            const cx = (Math.random() - 0.5) * hw * 1.6;
+            const cy = Math.random() * LAMP_HEIGHT;
+            const r  = 0.30 + Math.random() * 0.25;
+            blobs.push(makeBlob(cx, cy, 0, r, Math.random()));
         }
+        return blobs;
     }
 
     update(dt: number, time: number, aspect: number): void {
@@ -40,9 +46,8 @@ export class BlobSystem {
         for (const [i, b] of this.blobs.entries()) {
             b.position.x += b.velocity.x * clampedDt;
             b.position.y += b.velocity.y * clampedDt;
-            // z stays 0
-            b.position.z = 0;
-            b.velocity.z = 0;
+            b.position.z  = 0;
+            b.velocity.z  = 0;
 
             const m = b.radius * 0.4;
             if (b.position.x < -hw + m) { b.position.x = -hw + m; b.velocity.x =  Math.abs(b.velocity.x) * 0.5; }

@@ -2,12 +2,10 @@ import { Blob } from '../core/types';
 import {
     GRAVITY, BUOYANCY, HEAT_ZONE, COOL_ZONE,
     TURBULENCE, REPULSION_STRENGTH, REPULSION_MIN_DIST,
-    LAMP_DEPTH,
 } from '../core/constants';
 
-// ── Curl noise ────────────────────────────────────────────────────────────────
 const CURL_SCALE    = 1.0;
-const CURL_STRENGTH = 0.5;
+const CURL_STRENGTH = 0.4;
 const CURL_SPEED    = 0.6;
 
 function smoothHash(x: number, y: number): number {
@@ -48,19 +46,14 @@ export function updateBlob(blob: Blob, dt: number, time: number): void {
     blob.velocity.y -= GRAVITY * dt;
 
     blob.velocity.x += (
-        Math.sin(t              + blob.noisePhaseX) * 0.65 +
-        Math.sin(t * 2.7183     + blob.noisePhaseY) * 0.35
+        Math.sin(t          + blob.noisePhaseX) * 0.65 +
+        Math.sin(t * 2.7183 + blob.noisePhaseY) * 0.35
     ) * TURBULENCE * dt;
 
     blob.velocity.y += (
-        Math.cos(t * 1.3137     + blob.noisePhaseY) * 0.65 +
-        Math.cos(t * 0.6180     + blob.noisePhaseX) * 0.35
+        Math.cos(t * 1.3137 + blob.noisePhaseY) * 0.65 +
+        Math.cos(t * 0.6180 + blob.noisePhaseX) * 0.35
     ) * TURBULENCE * 0.4 * dt;
-
-    // Gentle Z drift — blobs slowly wander in depth
-    blob.velocity.z += (
-        Math.sin(t * 0.7 + blob.noisePhaseX * 1.3) * 0.4
-    ) * TURBULENCE * 0.2 * dt;
 
     const curl = curlNoise(blob.position.x, blob.position.y, time);
     blob.velocity.x += curl.vx * CURL_STRENGTH * dt;
@@ -75,32 +68,22 @@ export function applyRepulsion(blobs: Blob[], dt: number): void {
         for (let j = i + 1; j < blobs.length; j++) {
             const a = blobs[i];
             const b = blobs[j];
-
             const dx = a.position.x - b.position.x;
             const dy = a.position.y - b.position.y;
-            const dz = a.position.z - b.position.z;
-            const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-
+            const dist = Math.sqrt(dx*dx + dy*dy);
             const minDist = (a.radius + b.radius) * 0.9;
             if (dist >= minDist || dist < REPULSION_MIN_DIST) continue;
-
             const overlap = (minDist - dist) / minDist;
             const force   = overlap * REPULSION_STRENGTH * dt;
-
             const nx = dx / dist;
             const ny = dy / dist;
-            const nz = dz / dist;
-
             const totalMass = a.radius * a.radius + b.radius * b.radius;
             const wa = b.radius * b.radius / totalMass;
             const wb = a.radius * a.radius / totalMass;
-
             a.velocity.x += nx * force * wa;
             a.velocity.y += ny * force * wa;
-            a.velocity.z += nz * force * wa * 0.3;
             b.velocity.x -= nx * force * wb;
             b.velocity.y -= ny * force * wb;
-            b.velocity.z -= nz * force * wb * 0.3;
         }
     }
 }

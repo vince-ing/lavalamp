@@ -21,7 +21,8 @@ function bootstrap() {
     canvas.style.inset    = '0';
     document.body.appendChild(canvas);
 
-    const count      = isMobile() ? 6 : 10;
+    // 10 large blobs packed in a column — matches the photo density
+    const count      = isMobile() ? 7 : 10;
     const blobSystem = new BlobSystem(count);
 
     const input = new InputController(canvas);
