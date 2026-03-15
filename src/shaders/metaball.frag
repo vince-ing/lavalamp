@@ -18,10 +18,6 @@ uniform float fillLightStrength;
 varying vec2 vUv;
 
 // ── Noise ────────────────────────────────────────────────────────────────────
-// Two-octave value noise. Cheap, smooth, no texture lookup needed.
-// Used to perturb the field just before the isosurface threshold so the
-// blob edges wobble organically rather than sitting on a perfectly smooth shell.
-
 float hash(vec2 p) {
     p = fract(p * vec2(127.1, 311.7));
     p += dot(p, p + 19.19);
@@ -31,7 +27,6 @@ float hash(vec2 p) {
 float valueNoise(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
-    // Smooth interpolation
     vec2 u = f * f * (3.0 - 2.0 * f);
     return mix(
         mix(hash(i + vec2(0,0)), hash(i + vec2(1,0)), u.x),
@@ -41,16 +36,24 @@ float valueNoise(vec2 p) {
 }
 
 float fbm(vec2 p) {
-    // Two octaves — enough for organic lumps, cheap enough for per-pixel eval
-    float v  = valueNoise(p)          * 0.62;
-          v += valueNoise(p * 2.1 + vec2(3.7, 1.3)) * 0.38;
-    return v;  // range ~[0, 1]
+    float v  = valueNoise(p)                          * 0.62;
+          v += valueNoise(p * 2.1 + vec2(3.7, 1.3))  * 0.38;
+    return v;
 }
 
-// Noise parameters — tweak here
-const float NOISE_SCALE    = 1.5;   // spatial frequency (lower = bigger lumps)
-const float NOISE_STRENGTH = 0.04; // how much noise shifts the field value
-const float NOISE_SPEED    = 0.6;  // how fast the surface slowly crawls
+// User-tuned noise parameters — do not change
+const float NOISE_SCALE    = 1.5;
+const float NOISE_STRENGTH = 0.04;
+const float NOISE_SPEED    = 0.6;
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Subsurface glow parameters ───────────────────────────────────────────────
+// Each blob contributes a radial exp(-d²·falloff) glow at the fragment.
+// Accumulating across all blobs means merged regions glow brighter — looks
+// like light pooling inside thick wax.
+const float SSS_FALLOFF   = 0.15;  // how tightly the glow hugs each blob centre
+                                   // lower = wider/softer, higher = tighter hotspot
+const float SSS_STRENGTH  = 0.07; // overall brightness of the glow layer
 // ─────────────────────────────────────────────────────────────────────────────
 
 float wyvill(float d2, float R) {
@@ -77,18 +80,29 @@ float field(vec2 p) {
     float f = 0.0;
     for (int i = 0; i < 25; i++) {
         if (i >= blobCount) break;
-        vec2 offset = p - blobs[i];
-        f += squishKernel(offset, radii[i] * 2.8, velocities[i]);
+        f += squishKernel(p - blobs[i], radii[i] * 2.8, velocities[i]);
     }
-
-    // Add slowly-drifting low-frequency noise.
-    // The noise only meaningfully shifts the field near the isosurface
-    // (where f ≈ threshold), so blob interiors stay clean while edges wobble.
     vec2 noiseCoord = p * NOISE_SCALE + vec2(time * NOISE_SPEED, time * NOISE_SPEED * 0.7);
-    float n = fbm(noiseCoord) * 2.0 - 1.0;  // remap [0,1] → [-1,1]
+    float n = fbm(noiseCoord) * 2.0 - 1.0;
     f += n * NOISE_STRENGTH;
-
     return f;
+}
+
+// Accumulate subsurface glow from all blob centres.
+// We use raw Euclidean distance (not the warped field) so the hotspot is
+// always centred on the blob regardless of its squish direction.
+float subsurfaceGlow(vec2 p) {
+    float glow = 0.0;
+    for (int i = 0; i < 25; i++) {
+        if (i >= blobCount) break;
+        vec2  d    = p - blobs[i];
+        float d2   = dot(d, d);
+        float r    = radii[i];
+        // Normalise by radius so large and small blobs have consistent hotspot intensity
+        float nd2  = d2 / (r * r);
+        glow += exp(-nd2 * SSS_FALLOFF);
+    }
+    return glow;
 }
 
 void main() {
@@ -154,6 +168,18 @@ void main() {
     vec3  hVec2    = normalize(specDir2 + viewDir);
     float spec2    = pow(max(0.0, dot(normal, hVec2)), 10.0);
     col += colorWaxEdge * spec2 * 0.06 * fresnel;
+
+    // ── Subsurface glow ───────────────────────────────────────────────────
+    // Fringes pick up waxEdge, midtones waxCore, then bleach to near-white
+    // at the hotspot so the centre looks like light shining through wax
+    // rather than just a brighter version of the surface colour.
+    float glow      = subsurfaceGlow(p);
+    float glowNorm  = clamp(glow, 0.0, 3.0) / 3.0;   // drives colour blend
+    float glowWhite = clamp(glow * 1.2, 0.0, 1.0);    // less capped — drives whitening
+    vec3  glowTint  = mix(colorWaxEdge, colorWaxCore, glowNorm);
+          glowTint  = mix(glowTint, vec3(1.0), glowWhite * glowWhite);
+    col += glowTint * glow * SSS_STRENGTH * (0.6 + 0.4 * thickness);
+    // ─────────────────────────────────────────────────────────────────────
 
     col = col / (col + 0.55) * 1.55;
     col = mix(col, colorFogBlend, fogAmount);
