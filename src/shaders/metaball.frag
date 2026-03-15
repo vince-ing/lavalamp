@@ -180,8 +180,9 @@ void main() {
 
     float heightAtten = 1.0 - heightT * heightT * 0.5;
 
-    vec3 waxLit    = vec3(0.78, 0.87, 0.93);   // slightly less bright — waxy not glossy
-    vec3 waxShadow = mix(colorFluidBottom * 0.55, colorFillLight * 0.08, 0.15);
+    vec3 waxLit    = vec3(0.243, 0.694, 1);   // slightly less bright — waxy not glossy
+    vec3 waxShadow = vec3(0.09, 0.071, 0.62);
+    waxShadow = mix(waxShadow, vec3(0.0, 0.95, 0.80) * 1.2, (1.0 - heightT) * 0.9);
     vec3 waxRim    = colorFluidBottom * 0.35 + colorWaxEdge * 0.15;
 
     float shadowBlend = clamp(darkFace * 1.5, 0.0, 1.0);
@@ -215,6 +216,21 @@ void main() {
     float spec    = pow(max(0.0, dot(n, normalize(-specDir - rd))), 18.0);
     // Tint specular with the fill light colour — waxy highlights pick up lamp colour
     col += mix(colorFillLight * 0.5, vec3(1.0), 0.3) * spec * 0.10 * (1.0 - heightT * 0.4);
+
+    // ── Bottom bulb light ─────────────────────────────────────────────────────
+    // A saturated cyan point-light at the base of the lamp.
+    // Falls off sharply with height so only the lower blobs get coloured.
+    float bulbAtten = exp(-(1.0 - heightT) * 6.5);          // very strong at bottom, ~0 by mid-column
+    vec3  bulbColor  = vec3(0.0, 0.95, 0.80) * 1.4; // saturated cyan-green, slightly over 1
+
+    // Diffuse from bulb — bottom-facing surfaces catch it directly
+    col += bulbColor * litFace * bulbAtten * 5.45;
+
+    // SSS from bulb — thin wax near the bottom glows with saturated cyan
+    col += bulbColor * thinness * bulbAtten * 6.55;
+
+    // Rim backscatter from bulb — cyan halo around blob edges near bottom
+    col += bulbColor * fresnel * bulbAtten * 6.30;
 
     vec3  sc  = floor(pos * 14.0);
     vec3  sfr = fract(pos * 14.0) - 0.5;
