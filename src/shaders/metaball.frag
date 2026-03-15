@@ -7,6 +7,7 @@ uniform float time;
 uniform float aspect;
 uniform vec3  colorFogBlend;
 uniform float fogAmount;
+uniform float layerIndex;
 
 uniform vec3  colorFluidTop;
 uniform vec3  colorFluidBottom;
@@ -41,19 +42,60 @@ float fbm(vec2 p) {
     return v;
 }
 
-// User-tuned noise parameters — do not change
 const float NOISE_SCALE    = 1.5;
 const float NOISE_STRENGTH = 0.04;
 const float NOISE_SPEED    = 0.6;
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── Subsurface glow parameters ───────────────────────────────────────────────
-// Each blob contributes a radial exp(-d²·falloff) glow at the fragment.
-// Accumulating across all blobs means merged regions glow brighter — looks
-// like light pooling inside thick wax.
-const float SSS_FALLOFF   = 0.15;  // how tightly the glow hugs each blob centre
-                                   // lower = wider/softer, higher = tighter hotspot
-const float SSS_STRENGTH  = 0.04; // overall brightness of the glow layer
+// ── Caustic light patches ────────────────────────────────────────────────────
+const float CAUSTIC_SCALE    = 1.2;
+const float CAUSTIC_SPEED    = 0.09;
+const float CAUSTIC_WARP     = 0.55;
+const float CAUSTIC_SHARP    = 1.2;
+const float CAUSTIC_STRENGTH = 0.15;
+
+// Large per-layer offsets so each layer samples a completely uncorrelated
+// region of the noise field — back / middle / front all look different.
+vec2 layerSeed() {
+    if (layerIndex < 0.5) return vec2(0.0,   0.0);   // back
+    if (layerIndex < 1.5) return vec2(17.3,  31.7);  // middle
+                          return vec2(47.1, -23.9);  // front
+}
+
+float causticLayer(vec2 p, float timeOffset, vec2 drift) {
+    vec2 warpOff = vec2(
+        fbm(p * 0.9 + vec2(1.7, 9.2) + timeOffset * 0.31),
+        fbm(p * 0.9 + vec2(8.3, 2.8) - timeOffset * 0.27)
+    ) * 2.0 - 1.0;
+
+    vec2 warped = p + warpOff * CAUSTIC_WARP + drift;
+
+    float n    = fbm(warped);
+    float tent = 1.0 - abs(n * 2.0 - 1.0);
+    return pow(clamp(tent, 0.0, 1.0), CAUSTIC_SHARP);
+}
+
+float causticValue(vec2 p, float t) {
+    float sc = CAUSTIC_SCALE;
+
+    float layerA = causticLayer(
+        p * sc,
+        t,
+        vec2(t *  CAUSTIC_SPEED, t * CAUSTIC_SPEED * 0.61)
+    );
+    float layerB = causticLayer(
+        p * sc * 1.37 + vec2(3.1, 7.4),
+        t + 4.7,
+        vec2(t * -CAUSTIC_SPEED * 0.53, t * CAUSTIC_SPEED * 0.82)
+    );
+
+    return (layerA + layerB) * 0.5;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Subsurface glow ───────────────────────────────────────────────────────────
+const float SSS_FALLOFF  = 0.15;
+const float SSS_STRENGTH = 0.02;
 // ─────────────────────────────────────────────────────────────────────────────
 
 float wyvill(float d2, float R) {
@@ -88,31 +130,24 @@ float field(vec2 p) {
     return f;
 }
 
-// Accumulate subsurface glow from all blob centres.
-// We use raw Euclidean distance (not the warped field) so the hotspot is
-// always centred on the blob regardless of its squish direction.
 float subsurfaceGlow(vec2 p) {
     float glow = 0.0;
     for (int i = 0; i < 25; i++) {
         if (i >= blobCount) break;
-        vec2  d    = p - blobs[i];
-        float d2   = dot(d, d);
-        float r    = radii[i];
-        // Normalise by radius so large and small blobs have consistent hotspot intensity
-        float nd2  = d2 / (r * r);
+        vec2  d   = p - blobs[i];
+        float d2  = dot(d, d);
+        float r   = radii[i];
+        float nd2 = d2 / (r * r);
         glow += exp(-nd2 * SSS_FALLOFF);
     }
     return glow;
 }
 
 // ── Heat shimmer ─────────────────────────────────────────────────────────────
-// Offsets the sample position horizontally near the bottom of the lamp,
-// simulating refractive distortion from hot rising air.
-// Strength falls off smoothly to zero by mid-lamp so the top stays clean.
-const float SHIMMER_STRENGTH = 0.001;  // max horizontal wobble in world units
-const float SHIMMER_SCALE    = 70.8;    // spatial frequency of shimmer bands
-const float SHIMMER_SPEED    = 2.4;    // how fast the shimmer rises
-const float SHIMMER_FALLOFF  = 2.3;    // how quickly it fades from the bottom up
+const float SHIMMER_STRENGTH = 0.001;
+const float SHIMMER_SCALE    = 70.8;
+const float SHIMMER_SPEED    = 2.4;
+const float SHIMMER_FALLOFF  = 2.3;
 
 vec2 heatShimmer(vec2 uv) {
     float heat = pow(clamp(1.0 - uv.y * SHIMMER_FALLOFF, 0.0, 1.0), 2.0);
@@ -189,15 +224,49 @@ void main() {
     col += colorWaxEdge * spec2 * 0.06 * fresnel;
 
     // ── Subsurface glow ───────────────────────────────────────────────────
-    // Fringes pick up waxEdge, midtones waxCore, then bleach to near-white
-    // at the hotspot so the centre looks like light shining through wax
-    // rather than just a brighter version of the surface colour.
     float glow      = subsurfaceGlow(p);
-    float glowNorm  = clamp(glow, 0.0, 3.0) / 3.0;   // drives colour blend
-    float glowWhite = clamp(glow * 1.2, 0.0, 1.0);    // less capped — drives whitening
+    float glowNorm  = clamp(glow, 0.0, 3.0) / 3.0;
+    float glowWhite = clamp(glow * 1.2, 0.0, 1.0);
     vec3  glowTint  = mix(colorWaxEdge, colorWaxCore, glowNorm);
           glowTint  = mix(glowTint, vec3(1.0), glowWhite * glowWhite);
     col += glowTint * glow * SSS_STRENGTH * (0.6 + 1.5 * thickness);
+    // ─────────────────────────────────────────────────────────────────────
+
+    // ── Caustic light patches ─────────────────────────────────────────────
+    // Caustic sample coordinate is built in three steps so patches follow
+    // the blob's curved 3D surface instead of lying flat in screen space:
+    //
+    // 1. World position p — patches are anchored to the blob geometry.
+    //
+    // 2. Normal warp: displace by normal.xy scaled by (1 - NdotV).
+    //    NdotV is 1 at the very top and 0 at the silhouette edge.
+    //    Multiplying by (1-NdotV) means the warp is zero at the crown
+    //    (caustic pattern is undistorted there, as if light hits straight on)
+    //    and maximum at the sides (pattern stretches/rotates as it wraps
+    //    around the curve — matching how real projected caustics distort on
+    //    a rounded surface). This gives the impression of the pattern
+    //    following the 3D form without any actual 3D math.
+    //
+    // 3. Layer seed — a large per-layer offset so back / middle / front
+    //    each sample an uncorrelated region of the noise field, ensuring
+    //    every layer shows a visibly different pattern.
+
+    float normalWarpStrength = 0.55;
+    vec2  normalWarp = normal.xy * (1.0 - NdotV) * normalWarpStrength;
+    vec2  causticP   = p + normalWarp + layerSeed();
+
+    float caustic = causticValue(causticP, time);
+
+    // Surface receptivity: top-facing, interior, non-edge gets brightest patches.
+    float receptivity = NdotV * NdotV
+                      * (0.5 + 0.5 * thickness)
+                      * (1.0 - edgeMask * 0.7);
+
+    // Tint: warm near-white with a blush of waxCore, slightly hotter near lamp
+    vec3  causticTint = mix(vec3(1.0, 0.97, 0.88), colorWaxCore * 2.0, 0.15);
+          causticTint = mix(causticTint, vec3(1.0), heat * 0.25);
+
+    col += causticTint * caustic * receptivity * CAUSTIC_STRENGTH;
     // ─────────────────────────────────────────────────────────────────────
 
     col = col / (col + 0.55) * 1.55;

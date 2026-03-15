@@ -12,6 +12,12 @@ const fogMap: Record<LayerType, number> = {
     back:   0.65,
 };
 
+const layerIndexMap: Record<LayerType, number> = {
+    back:   0.0,
+    middle: 1.0,
+    front:  2.0,
+};
+
 export function createLavaMaterial(layer: LayerType = 'middle'): THREE.ShaderMaterial {
     return new THREE.ShaderMaterial({
         uniforms: {
@@ -30,6 +36,7 @@ export function createLavaMaterial(layer: LayerType = 'middle'): THREE.ShaderMat
             fillLightStrength:  { value: FILL_LIGHT_STRENGTH },
             colorFogBlend:      { value: SHADER_COLORS.fluidBottom },
             fogAmount:          { value: fogMap[layer] },
+            layerIndex:         { value: layerIndexMap[layer] },
         },
         vertexShader,
         fragmentShader,
