@@ -180,28 +180,41 @@ void main() {
 
     float heightAtten = 1.0 - heightT * heightT * 0.5;
 
-    vec3 waxLit    = vec3(0.82, 0.90, 0.96);
+    vec3 waxLit    = vec3(0.78, 0.87, 0.93);   // slightly less bright — waxy not glossy
     vec3 waxShadow = mix(colorFluidBottom * 0.55, colorFillLight * 0.08, 0.15);
     vec3 waxRim    = colorFluidBottom * 0.35 + colorWaxEdge * 0.15;
 
     float shadowBlend = clamp(darkFace * 1.5, 0.0, 1.0);
     vec3  waxBase     = mix(waxLit, waxShadow, shadowBlend);
-    waxBase = mix(waxBase, waxRim, fresnel * 0.72);
+    waxBase = mix(waxBase, waxRim, fresnel * 0.68);
 
-    float sssBlend = clamp(fresnel * 0.45 + thinness * 0.60, 0.0, 1.0);
-    waxBase = mix(waxBase, colorFillLight * 0.70, sssBlend * fillLightStrength * 0.85);
+    // SSS: wax is translucent — cyan lamp bleeds through at edges and thin spots
+    float sssBlend = clamp(fresnel * 0.5 + thinness * 0.65, 0.0, 1.0);
+    waxBase = mix(waxBase, colorFillLight * 0.65, sssBlend * fillLightStrength * 0.90);
 
-    float diffuse = 0.04 + litFace * 0.90;
+    // Wrap diffuse — wax scatters light softly around the terminator
+    // wrap=0.4 means the dark side gets some light (like a candle)
+    float wrap    = 0.4;
+    float wrapDiff = (litFace + wrap) / (1.0 + wrap);  // 0.28 on dark side, 1.0 on lit
+    wrapDiff = clamp(wrapDiff, 0.0, 1.0);
+    // Darken the shadow side more strongly for contrast
+    float diffuse = mix(0.03, 0.88, wrapDiff * wrapDiff);
     diffuse      *= heightAtten;
     vec3  col     = waxBase * clamp(diffuse, 0.0, 1.0);
 
-    col += colorFillLight * litFace * heightAtten * fillLightStrength * 0.70;
-    col += colorFillLight * thinness * fillLightStrength * 0.75 * heightAtten;
-    col += colorFillLight * fresnel * fillLightStrength * 0.25;
+    // Cyan lamp glow — direct on lit face
+    col += colorFillLight * litFace * heightAtten * fillLightStrength * 0.55;
+    // SSS volume glow — thin areas transmit lamp colour
+    col += colorFillLight * thinness * fillLightStrength * 0.65 * heightAtten;
+    // Very faint rim backscatter
+    col += colorFillLight * fresnel * fillLightStrength * 0.18;
 
+    // Specular — much softer, broader, waxy (not shiny plastic)
+    // Use a wide lobe (low exponent) and low strength
     vec3  specDir = normalize(vec3(0.05, -1.0, 0.85));
-    float spec    = pow(max(0.0, dot(n, normalize(-specDir - rd))), 68.0);
-    col += vec3(0.85, 1.0, 1.0) * spec * 0.28 * (1.0 - heightT * 0.5);
+    float spec    = pow(max(0.0, dot(n, normalize(-specDir - rd))), 18.0);
+    // Tint specular with the fill light colour — waxy highlights pick up lamp colour
+    col += mix(colorFillLight * 0.5, vec3(1.0), 0.3) * spec * 0.10 * (1.0 - heightT * 0.4);
 
     vec3  sc  = floor(pos * 14.0);
     vec3  sfr = fract(pos * 14.0) - 0.5;
