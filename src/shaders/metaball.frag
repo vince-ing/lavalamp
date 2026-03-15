@@ -21,7 +21,6 @@ const float MIN_DIST    = 0.005;
 const float NDELTA      = 0.004;
 const float PI          = 3.141592;
 
-// ── Noise helpers ─────────────────────────────────────────────────────────────
 float hash13(vec3 p) {
     return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
 }
@@ -40,7 +39,6 @@ float vnoise(vec3 p) {
         u.z);
 }
 
-// ── Surface undulation (unchanged from original) ──────────────────────────────
 float surfaceWave(vec3 p) {
     vec3  q = p * 3.8 + vec3(time * 0.022, time * 0.016, time * 0.011);
     float n = vnoise(q) * 0.65
@@ -48,7 +46,6 @@ float surfaceWave(vec3 p) {
     return pow(clamp(n, 0.0, 1.0), 8.0);
 }
 
-// ── SDF (unchanged from original) ────────────────────────────────────────────
 float rawDensity(vec3 p) {
     float den = 0.0;
     for (int i = 0; i < 30; i++) {
@@ -79,7 +76,6 @@ vec3 sceneNormal(vec3 p) {
     ));
 }
 
-// ── Thickness: march toward the bottom lamp through the wax ───────────────────
 float estimateThickness(vec3 hitPos, vec3 towardLamp) {
     float thickness = 0.0;
     vec3  p = hitPos;
@@ -91,7 +87,6 @@ float estimateThickness(vec3 hitPos, vec3 towardLamp) {
     return thickness;
 }
 
-// ── Background dust (unchanged from original) ─────────────────────────────────
 float bgDustSharp(vec2 wp) {
     vec2 dp   = vec2(wp.x + sin(time*0.05+wp.y*1.1)*0.03, wp.y - time*0.04);
     vec2 cell = floor(dp * 16.0);
@@ -114,12 +109,10 @@ float bgDustBlurry(vec2 wp) {
 }
 
 void main() {
-    // uv.y = 0 at bottom of lamp, 1 at top
     vec2  uv     = vec2(vUv.x, 1.0 - vUv.y);
     float worldX = (uv.x - 0.5) * LAMP_HEIGHT * aspect;
     float worldY = uv.y * LAMP_HEIGHT;
 
-    // ── Raymarch ──────────────────────────────────────────────────────────────
     vec3  pos    = vec3(worldX, worldY, CAM_Z);
     vec3  ray    = vec3(0.0, 0.0, 1.0);
     float dist   = 2.0;
@@ -133,16 +126,15 @@ void main() {
         tMarch += s;
     }
 
-    // ── Background ────────────────────────────────────────────────────────────
     if (dist >= MIN_DIST) {
-        // Deep indigo gradient — darker at top, hint of cyan glow at bottom
-        float bgT = 1.0 - uv.y;
-        vec3  bg  = mix(colorFluidTop, colorFluidBottom, bgT * bgT);
+        // vUv.y = 0 at screen bottom, 1 at screen top (uv.y is flipped for world space)
+        // bright cyan/aqua at bottom, dark blue at top
+        vec3 bg = mix(colorFluidBottom, colorFluidTop, vUv.y * vUv.y);
 
-        // Cyan heat cone rising from lamp at bottom-centre
+        // Cyan heat cone at bottom-centre
         float cx      = uv.x - 0.5;
-        float cone    = exp(-cx*cx*22.0) * exp(-uv.y * 3.2);
-        float rimGlow = exp(-abs(abs(cx)-0.42)*28.0) * exp(-uv.y*2.0) * 0.3;
+        float cone    = exp(-cx*cx*22.0) * exp(-vUv.y * 3.2);
+        float rimGlow = exp(-abs(abs(cx)-0.42)*28.0) * exp(-vUv.y*2.0) * 0.3;
         bg += colorFillLight * (cone * 0.5 + rimGlow) * 0.65;
 
         // Vignette
@@ -160,86 +152,53 @@ void main() {
         return;
     }
 
-    // ── Surface shading ───────────────────────────────────────────────────────
     vec3 n  = sceneNormal(pos);
     vec3 rd = ray;
 
-    // heightT: 0 = bottom of lamp (near bulb, hot), 1 = top (cool, dark)
     float heightT = clamp(pos.y / LAMP_HEIGHT, 0.0, 1.0);
 
-    // Lamp is below the fluid, light travels upward.
-    // lampDir = direction FROM surface TOWARD light (pointing downward = toward lamp)
     vec3  lampDir  = normalize(vec3(0.05, -1.0, 0.5));
-    float NdotL    = dot(n, -lampDir);    // +1 = surface faces down = lit by lamp
-    float litFace  = max(0.0,  NdotL);   // bottom belly of blob
-    float darkFace = max(0.0, -NdotL);   // top cap of blob (away from lamp)
+    float NdotL    = dot(n, -lampDir);
+    float litFace  = max(0.0,  NdotL);
+    float darkFace = max(0.0, -NdotL);
 
     float NdotV   = max(0.0, dot(n, -rd));
     float fresnel = pow(1.0 - NdotV, 2.5);
 
-    // Thickness march toward lamp — thin = cyan SSS, thick = opaque pale
     float thickness = estimateThickness(pos, lampDir);
     float thinness  = exp(-thickness * 6.0);
 
-    // Height attenuation — blobs at top of column receive less lamp light
     float heightAtten = 1.0 - heightT * heightT * 0.5;
 
-    // ── Wax colour ────────────────────────────────────────────────────────────
-    // Hardcode pale blue-white — the actual wax material colour from the photo.
-    // We do NOT use colorWaxCore here because the uniform may be set to any
-    // colour by the user palette (e.g. purple). The wax physical colour is
-    // always pale; the fill light tints it at the edges.
-    vec3 waxLit = vec3(0.82, 0.90, 0.96);   // pale cool white
-
-    // Top shadow: dark teal matching the fluid — blobs look dark at the top
+    vec3 waxLit    = vec3(0.82, 0.90, 0.96);
     vec3 waxShadow = mix(colorFluidBottom * 0.55, colorFillLight * 0.08, 0.15);
+    vec3 waxRim    = colorFluidBottom * 0.35 + colorWaxEdge * 0.15;
 
-    // Silhouette rim: near-black indigo edge
-    vec3 waxRim = colorFluidBottom * 0.35 + colorWaxEdge * 0.15;
-
-    // shadowBlend: 0 = fully lit (bottom belly), 1 = fully dark (top cap).
-    // darkFace  = surface normal pointing away from lamp (top) → drives shadow
-    // (1-heightT) REMOVED from here — height attenuation handled in diffuse,
-    // not in the colour blend, so the gradient direction is correct.
     float shadowBlend = clamp(darkFace * 1.5, 0.0, 1.0);
     vec3  waxBase     = mix(waxLit, waxShadow, shadowBlend);
-
-    // Dark rim at silhouette
     waxBase = mix(waxBase, waxRim, fresnel * 0.72);
 
-    // Cyan SSS — stronger than before: backlight bleeds cyan at thin/edge areas
     float sssBlend = clamp(fresnel * 0.45 + thinness * 0.60, 0.0, 1.0);
     waxBase = mix(waxBase, colorFillLight * 0.70, sssBlend * fillLightStrength * 0.85);
 
-    // ── Diffuse ───────────────────────────────────────────────────────────────
-    // litFace = 1 on bottom belly (faces lamp below), 0 on top cap
-    // heightAtten dims blobs that sit high in the column (farther from bulb)
     float diffuse = 0.04 + litFace * 0.90;
     diffuse      *= heightAtten;
     vec3  col     = waxBase * clamp(diffuse, 0.0, 1.0);
 
-    // ── Cyan lamp fill ────────────────────────────────────────────────────────
-    // Direct cyan on bottom-lit face
     col += colorFillLight * litFace * heightAtten * fillLightStrength * 0.70;
-    // SSS: cyan transmitted through thin wax — stronger now
     col += colorFillLight * thinness * fillLightStrength * 0.75 * heightAtten;
-    // Cyan rim halo from edge backscatter
     col += colorFillLight * fresnel * fillLightStrength * 0.25;
 
-    // ── Specular ─────────────────────────────────────────────────────────────
-    // Lamp below-forward, reflection on bottom face
     vec3  specDir = normalize(vec3(0.05, -1.0, 0.85));
     float spec    = pow(max(0.0, dot(n, normalize(-specDir - rd))), 68.0);
     col += vec3(0.85, 1.0, 1.0) * spec * 0.28 * (1.0 - heightT * 0.5);
 
-    // ── Surface specks (kept from original, dimmed) ───────────────────────────
     vec3  sc  = floor(pos * 14.0);
     vec3  sfr = fract(pos * 14.0) - 0.5;
     float sp  = exp(-dot(sfr,sfr)*30.0) * step(0.98, hash13(sc+7.3))
               * (vnoise(pos*2.2 + vec3(time*0.03)) * 0.6 + 0.4);
     col += vec3(0.88, 0.94, 1.00) * sp * 0.20;
 
-    // ── Tone map ──────────────────────────────────────────────────────────────
     col = col / (col + 0.5) * 1.5;
 
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
