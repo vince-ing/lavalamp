@@ -59,6 +59,9 @@ float rawDensity(vec3 p) {
 }
 
 float scene(vec3 p) {
+    // Warp the sample point with low-frequency noise before evaluating density.
+    // This stretches and distorts the isosurface into organic amoeba shapes
+    // without breaking the SDF's ability to find the surface.
     vec3 warp = vec3(
         vnoise(p * 0.8 + vec3(time * 0.04, 0.0, 1.7)),
         vnoise(p * 0.8 + vec3(0.0, time * 0.035, 3.4)),
@@ -133,104 +136,110 @@ void main() {
         tMarch += s;
     }
 
-    vec3 col = vec3(0.0);
-
     if (dist >= MIN_DIST) {
-        // ── Background ────────────────────────────────────────────────────────
+        // vUv.y = 0 at screen bottom, 1 at screen top (uv.y is flipped for world space)
+        // bright cyan/aqua at bottom, dark blue at top
         vec3 bg = mix(colorFluidBottom, colorFluidTop, vUv.y * vUv.y);
+
+        // Cyan heat cone at bottom-centre
         float cx      = uv.x - 0.5;
         float cone    = exp(-cx*cx*22.0) * exp(-vUv.y * 3.2);
         float rimGlow = exp(-abs(abs(cx)-0.42)*28.0) * exp(-vUv.y*2.0) * 0.3;
         bg += colorFillLight * (cone * 0.5 + rimGlow) * 0.65;
+
+        // Vignette
         vec2  suv = vUv * 2.0 - 1.0;
         suv.x    *= aspect;
         float vig = 1.0 - clamp(dot(suv,suv) * 0.38, 0.0, 1.0);
         bg *= 0.28 + 0.72 * vig;
+
+        // Drifting motes
         float fadeY = smoothstep(0.0,0.15,uv.y) * smoothstep(1.0,0.9,uv.y);
         bg += vec3(0.55,0.85,1.00) * bgDustSharp(vec2(worldX,worldY))  * 0.18 * fadeY;
         bg += vec3(0.45,0.72,1.00) * bgDustBlurry(vec2(worldX,worldY)) * 0.08 * fadeY;
-        col = bg;
 
-    } else {
-        // ── Blobs ─────────────────────────────────────────────────────────────
-        vec3  n   = sceneNormal(pos);
-        vec3  rd  = ray;
-
-        float heightT = clamp(pos.y / LAMP_HEIGHT, 0.0, 1.0);
-
-        vec3  lampDir  = normalize(vec3(0.05, -1.0, 0.5));
-        float NdotL    = dot(n, -lampDir);
-        float litFace  = max(0.0,  NdotL);
-        float darkFace = max(0.0, -NdotL);
-
-        float NdotV   = max(0.0, dot(n, -rd));
-        float fresnel = pow(1.0 - NdotV, 2.5);
-
-        float thickness = estimateThickness(pos, lampDir);
-        float thinness  = exp(-thickness * 6.0);
-
-        float heightAtten = 1.0 - heightT * heightT * 0.5;
-
-        vec3 waxLit    = vec3(0.169, 0.573, 0.922);
-        vec3 waxShadow = vec3(0.09, 0.071, 0.62);
-        waxShadow = mix(waxShadow, vec3(0.0, 1.0, 0.7) * 1.0, smoothstep(0.0, 0.9, heightT));
-        vec3 waxRim    = colorFluidBottom * 0.35 + colorWaxEdge * 0.15;
-
-        float shadowBlend = smoothstep(0.0, 1.0, darkFace * 1.2);
-        vec3  waxBase     = mix(waxLit, waxShadow, shadowBlend);
-        waxBase = mix(waxBase, waxRim, fresnel * 0.68);
-
-        float sssBlend = clamp(fresnel * 0.5 + thinness * 0.65, 0.0, 1.0);
-        waxBase = mix(waxBase, colorFillLight * 0.65, sssBlend * fillLightStrength * 0.90);
-
-        float wrap     = 0.4;
-        float wrapDiff = clamp((litFace + wrap) / (1.0 + wrap), 0.0, 1.0);
-        float diffuse  = mix(0.03, 0.88, wrapDiff * wrapDiff) * heightAtten;
-        col = waxBase * clamp(diffuse, 0.0, 1.0);
-
-        col += colorFillLight * litFace  * heightAtten * fillLightStrength * 0.55;
-        col += colorFillLight * thinness * fillLightStrength * 0.65 * heightAtten;
-        col += colorFillLight * fresnel  * fillLightStrength * 0.18;
-
-        vec3  specDir = normalize(vec3(0.05, -1.0, 0.85));
-        float spec    = pow(max(0.0, dot(n, normalize(-specDir - rd))), 18.0);
-        col += mix(colorFillLight * 0.5, vec3(1.0), 0.3) * spec * 0.10 * (1.0 - heightT * 0.4);
-
-        float bulbAtten = exp(-(1.0 - heightT) * 6.5);
-        vec3  bulbColor = vec3(0.0, 0.95, 0.80) * 1.4;
-        col += bulbColor * litFace  * bulbAtten * 5.45;
-        col += bulbColor * thinness * bulbAtten * 6.55;
-        col += bulbColor * fresnel  * bulbAtten * 6.30;
-
-        vec3  sc  = floor(pos * 14.0);
-        vec3  sfr = fract(pos * 14.0) - 0.5;
-        float sp  = exp(-dot(sfr,sfr)*30.0) * step(0.98, hash13(sc+7.3))
-                  * (vnoise(pos*2.2 + vec3(time*0.03)) * 0.6 + 0.4);
-        col += vec3(0.88, 0.94, 1.00) * sp * 0.20;
-
-        col = col / (col + 0.5) * 1.5;
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+        return;
     }
 
-    // ── Bayer 4x4 dither — applied to BOTH background and blobs ──────────────
-    mat4 bayer = mat4(
-         0.0/16.0,  8.0/16.0,  2.0/16.0, 10.0/16.0,
-        12.0/16.0,  4.0/16.0, 14.0/16.0,  6.0/16.0,
-         3.0/16.0, 11.0/16.0,  1.0/16.0,  9.0/16.0,
-        15.0/16.0,  7.0/16.0, 13.0/16.0,  5.0/16.0
-    );
-    ivec2 px        = ivec2(mod(gl_FragCoord.xy, 5.0));
-    float threshold = bayer[px.x][px.y];
-    float luma      = dot(col, vec3(0.299, 0.587, 0.114));
-    float dithered = floor(luma * 4.0 + threshold) / 4.0;
+    vec3 n  = sceneNormal(pos);
+    vec3 rd = ray;
 
-    vec3 black = vec3(0.08, 0.03, 0.14);
-    vec3 dark  = vec3(0.22, 0.08, 0.35);
-    vec3 mid   = vec3(0.55, 0.25, 0.75);
-    vec3 light = vec3(0.98, 0.88, 0.92);
+    float heightT = clamp(pos.y / LAMP_HEIGHT, 0.0, 1.0);
 
-    col = dithered < 0.2  ? black :
-        dithered < 0.5  ? dark  :
-        dithered < 0.78 ? mid   : light;
+    vec3  lampDir  = normalize(vec3(0.05, -1.0, 0.5));
+    float NdotL    = dot(n, -lampDir);
+    float litFace  = max(0.0,  NdotL);
+    float darkFace = max(0.0, -NdotL);
 
-    gl_FragColor = vec4(col, 1.0);
+    float NdotV   = max(0.0, dot(n, -rd));
+    float fresnel = pow(1.0 - NdotV, 2.5);
+
+    float thickness = estimateThickness(pos, lampDir);
+    float thinness  = exp(-thickness * 6.0);
+
+    float heightAtten = 1.0 - heightT * heightT * 0.5;
+
+    vec3 waxLit    = vec3(0.169, 0.573, 0.922);   // slightly less bright — waxy not glossy
+    vec3 waxShadow = vec3(0.09, 0.071, 0.62);
+    waxShadow = mix(waxShadow, vec3(0.0, 1.0, 0.7) * 1.0, smoothstep(0.0, 0.9, heightT));
+    // waxShadow = mix(waxShadow, vec3(0.0, 0.0, 0.0), smoothstep(0.4, 0.0, heightT));
+    vec3 waxRim    = colorFluidBottom * 0.35 + colorWaxEdge * 0.15;
+
+    float shadowBlend = smoothstep(0.0, 1.0, darkFace * 1.2);
+    vec3  waxBase     = mix(waxLit, waxShadow, shadowBlend);
+    waxBase = mix(waxBase, waxRim, fresnel * 0.68);
+
+    // SSS: wax is translucent — cyan lamp bleeds through at edges and thin spots
+    float sssBlend = clamp(fresnel * 0.5 + thinness * 0.65, 0.0, 1.0);
+    waxBase = mix(waxBase, colorFillLight * 0.65, sssBlend * fillLightStrength * 0.90);
+
+    // Wrap diffuse — wax scatters light softly around the terminator
+    // wrap=0.4 means the dark side gets some light (like a candle)
+    float wrap    = 0.4;
+    float wrapDiff = (litFace + wrap) / (1.0 + wrap);  // 0.28 on dark side, 1.0 on lit
+    wrapDiff = clamp(wrapDiff, 0.0, 1.0);
+    // Darken the shadow side more strongly for contrast
+    float diffuse = mix(0.03, 0.88, wrapDiff * wrapDiff);
+    diffuse      *= heightAtten;
+    vec3  col     = waxBase * clamp(diffuse, 0.0, 1.0);
+
+    // Cyan lamp glow — direct on lit face
+    col += colorFillLight * litFace * heightAtten * fillLightStrength * 0.55;
+    // SSS volume glow — thin areas transmit lamp colour
+    col += colorFillLight * thinness * fillLightStrength * 0.65 * heightAtten;
+    // Very faint rim backscatter
+    col += colorFillLight * fresnel * fillLightStrength * 0.18;
+
+    // Specular — much softer, broader, waxy (not shiny plastic)
+    // Use a wide lobe (low exponent) and low strength
+    vec3  specDir = normalize(vec3(0.05, -1.0, 0.85));
+    float spec    = pow(max(0.0, dot(n, normalize(-specDir - rd))), 18.0);
+    // Tint specular with the fill light colour — waxy highlights pick up lamp colour
+    col += mix(colorFillLight * 0.5, vec3(1.0), 0.3) * spec * 0.10 * (1.0 - heightT * 0.4);
+
+    // ── Bottom bulb light ─────────────────────────────────────────────────────
+    // A saturated cyan point-light at the base of the lamp.
+    // Falls off sharply with height so only the lower blobs get coloured.
+    float bulbAtten = exp(-(1.0 - heightT) * 6.5);          // very strong at bottom, ~0 by mid-column
+    vec3  bulbColor  = vec3(0.0, 0.95, 0.80) * 1.4; // saturated cyan-green, slightly over 1
+
+    // Diffuse from bulb — bottom-facing surfaces catch it directly
+    col += bulbColor * litFace * bulbAtten * 5.45;
+
+    // SSS from bulb — thin wax near the bottom glows with saturated cyan
+    col += bulbColor * thinness * bulbAtten * 6.55;
+
+    // Rim backscatter from bulb — cyan halo around blob edges near bottom
+    col += bulbColor * fresnel * bulbAtten * 6.30;
+
+    vec3  sc  = floor(pos * 14.0);
+    vec3  sfr = fract(pos * 14.0) - 0.5;
+    float sp  = exp(-dot(sfr,sfr)*30.0) * step(0.98, hash13(sc+7.3))
+              * (vnoise(pos*2.2 + vec3(time*0.03)) * 0.6 + 0.4);
+    col += vec3(0.88, 0.94, 1.00) * sp * 0.20;
+
+    col = col / (col + 0.5) * 1.5;
+
+    gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }

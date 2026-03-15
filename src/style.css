@@ -6,24 +6,6 @@ html, body {
     overflow: hidden;
 }
 
-html:fullscreen,
-html:-webkit-full-screen {
-    width: 100vw !important;
-    height: 100vh !important;
-}
-
-html:fullscreen body,
-html:-webkit-full-screen body {
-    width: 100vw !important;
-    height: 100vh !important;
-}
-
-html:fullscreen canvas,
-html:-webkit-full-screen canvas {
-    width: 100vw !important;
-    height: 100vh !important;
-}
-
 canvas {
     display: block;
     width: 100%;

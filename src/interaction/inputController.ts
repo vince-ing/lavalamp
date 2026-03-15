@@ -1,7 +1,7 @@
 import { BlobSystem } from '../simulation/blobSystem';
 import { LAMP_HEIGHT } from '../core/constants';
 
-const MAX_INTERACTION_SPEED = 2.2;
+const MAX_INTERACTION_SPEED = 3.2;
 
 export class InputController {
     private touches = new Map<number, { x: number; y: number }>();
@@ -81,7 +81,7 @@ export class InputController {
                 const nx = dx / dist;
                 const ny = dy / dist;
                 const t  = 1 - dist / reach;
-                const str = t * t * 1.6;
+                const str = t * t * 3.6;
 
                 if (this.leftDown)  { b.velocity.x -= nx * str; b.velocity.y -= ny * str; }
                 if (this.rightDown) { b.velocity.x += nx * str * 1.4; b.velocity.y += ny * str * 1.4; }

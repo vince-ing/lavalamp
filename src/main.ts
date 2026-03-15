@@ -10,9 +10,6 @@ function isMobile(): boolean {
 }
 
 function bootstrap() {
-    document.body.style.background = '#000';
-    document.documentElement.style.background = '#000';
-
     const material     = createLavaMaterial();
     const sceneContext = createScene(material);
     const canvas       = sceneContext.renderer.domElement;
@@ -21,7 +18,6 @@ function bootstrap() {
     canvas.style.inset    = '0';
     document.body.appendChild(canvas);
 
-    // 10 large blobs packed in a column — matches the photo density
     const count      = isMobile() ? 5 : 10;
     const blobSystem = new BlobSystem(count);
 
@@ -36,6 +32,20 @@ function bootstrap() {
                 document.documentElement.requestFullscreen().catch(console.error);
             else
                 document.exitFullscreen();
+        }
+    });
+
+    // Tell Electron to pass clicks through when not over a blob
+    canvas.addEventListener('mousemove', (e) => {
+        const pixel = new Uint8Array(4);
+        const gl = (canvas as HTMLCanvasElement & { __gl?: WebGLRenderingContext }).__gl 
+            || canvas.getContext('webgl');
+        if ((window as any).setIgnoreMouse) {
+            // Check if pixel under mouse is transparent (no blob)
+            const x = e.clientX * window.devicePixelRatio;
+            const y = (window.innerHeight - e.clientY) * window.devicePixelRatio;
+            (window as any).setIgnoreMouse(false);
+            setTimeout(() => (window as any).setIgnoreMouse(true), 50);
         }
     });
 }
