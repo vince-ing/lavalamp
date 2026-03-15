@@ -16,7 +16,7 @@ export class InputController {
             const sw = LAMP_HEIGHT * aspect;
             return {
                 x: ((cx - r.left) / r.width)  * sw - sw / 2,
-                y: (1 - (cy - r.top) / r.height) * LAMP_HEIGHT,
+                y: ((cy - r.top) / r.height) * LAMP_HEIGHT,
             };
         };
 

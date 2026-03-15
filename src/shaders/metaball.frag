@@ -33,6 +33,10 @@ float hash13(vec3 p) {
     return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
 }
 
+float hash12(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
 float vnoise(vec3 p) {
     vec3 i = floor(p);
     vec3 f = fract(p);
@@ -46,67 +50,88 @@ float vnoise(vec3 p) {
     );
 }
 
-float hash12(vec2 p) {
-    vec3 p3  = fract(vec3(p.xyx) * .1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
+// ── Blob surface specks: extremely sparse, very slow ─────────────────────────
+float dustSpecks(vec3 p) {
+    vec3  cell  = floor(p * 14.0);
+    vec3  fr    = fract(p * 14.0) - 0.5;
+
+    // Very slow pulse: full cycle takes ~60-120 seconds
+    float slowTime = time * 0.000000000005;  // stretch time way out
+    float phase    = hash13(cell) * 6.2832;
+    float pulse    = 0.5 + 0.05 * sin(slowTime + phase);
+
+    float d2    = dot(fr, fr);
+    float shape = exp(-d2 * 30.0);
+
+    // Only ~3% of cells — much sparser than before
+    float exists = step(0.98, hash13(cell + 7.3));
+
+    return shape * pow(pulse, 3.0) * exists;
 }
 
-float bubbleLayer(vec2 uv, float t, vec2 scale, float speed, float focus) {
-    vec2 st = uv * scale;
-    st.y -= t * speed;
-    vec2 id = floor(st);
-    vec2 f = fract(st);
-    
-    float color = 0.0;
-    
-    // Check 3x3 neighborhood to completely eliminate boundary flickering
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            vec2 neighbor = vec2(float(x), float(y));
-            vec2 nid = id + neighbor;
-            
-            float h = hash12(nid);
-            if (h > 0.96) { // Lower overall density
-                vec2 center = vec2(hash12(nid + 13.0), hash12(nid + 17.0));
-                // Slow horizontal wobble
-                center.x += sin(t * 0.5 + h * 10.0) * 0.25; 
-                
-                vec2 diff = neighbor + center - f;
-                float d = length(diff);
-                
-                // focus: 0.0 = very out of focus (large, blurry), 1.0 = in focus (small, sharp)
-                float r = mix(0.35, 0.08, focus);
-                float blur = mix(0.9, 0.2, focus);
-                
-                float core = smoothstep(r, r * (1.0 - blur), d);
-                // Extra bloom spreading outside the core
-                float glow = smoothstep(r * 2.5, 0.0, d) * mix(0.7, 0.2, focus);
-                
-                // Smooth pulse so they don't look static
-                float pulse = sin(t * 1.5 + h * 20.0) * 0.5 + 0.5;
-                float intensity = mix(0.4, 1.0, pulse) * ((h - 0.96) / 0.04);
-                
-                color += (core + glow) * intensity;
-            }
-        }
-    }
-    return color;
+// ── Background dust: sharp + blurry layers, small, slowly drifting ───────────
+
+// Sharp pinpoint motes
+float bgDustSharp(vec2 wp) {
+    vec2 driftPos = wp;
+    driftPos.y -= time * 0.04;
+    driftPos.x += sin(time * 0.05 + wp.y * 1.1) * 0.03;
+
+    float scale = 16.0;             // fine lattice → small motes
+    vec2  cell  = floor(driftPos * scale);
+    vec2  fr    = fract(driftPos * scale) - 0.5;
+
+    // Random sub-cell jitter so motes aren't on a grid
+    float ox = hash12(cell)                    - 0.5;
+    float oy = hash12(cell + vec2(3.7, 8.1))   - 0.5;
+    vec2  d  = fr - vec2(ox, oy) * 0.38;
+
+    float d2    = dot(d, d);
+    // Tight falloff → sharp pinpoint
+    float shape = exp(-d2 * 55.0);
+
+    float phase = hash12(cell + vec2(1.3, 5.7)) * 6.2832;
+    float rate  = 0.03 + hash12(cell + vec2(9.1, 2.3)) * 0.06;
+    float pulse = 0.5 + 0.5 * sin(time * rate + phase);
+
+    // ~10% occupancy
+    float exists = step(0.975, hash12(cell + vec2(4.4, 6.6)));
+
+    return shape * pow(pulse, 2.0) * exists;
 }
 
-float microBubbles(vec2 uv, float t) {
-    float b = 0.0;
-    // Layer 1: Far back. Very blurry, slow, large blobs
-    b += bubbleLayer(uv, t, vec2(15.0, 25.0), 0.2, 0.0) * 0.4;
-    // Layer 2: Mid-ground. Somewhat blurry, medium speed
-    b += bubbleLayer(uv, t, vec2(25.0, 45.0), 0.4, 0.5) * 0.6;
-    // Layer 3: Foreground. Sharp, fast, small
-    b += bubbleLayer(uv, t, vec2(40.0, 70.0), 0.7, 1.0) * 0.8;
-    return b;
+// Soft blurry motes — same idea but loose falloff, different lattice phase
+float bgDustBlurry(vec2 wp) {
+    vec2 driftPos = wp;
+    // Slightly different drift direction and speed from sharp layer
+    driftPos.y -= time * 0.028;
+    driftPos.x += sin(time * 0.038 + wp.y * 0.7 + 2.1) * 0.045;
+
+    float scale = 4.0;              // coarser lattice → more spread out
+    vec2  cell  = floor(driftPos * scale);
+    vec2  fr    = fract(driftPos * scale) - 0.5;
+
+    float ox = hash12(cell + vec2(5.1, 1.9))   - 0.5;
+    float oy = hash12(cell + vec2(2.3, 7.4))   - 0.5;
+    vec2  d  = fr - vec2(ox, oy) * 0.40;
+
+    float d2    = dot(d, d);
+    // Wide falloff → soft halo
+    float shape = exp(-d2 * 20.0);
+
+    float phase = hash12(cell + vec2(6.2, 3.8)) * 6.2832;
+    float rate  = 0.02 + hash12(cell + vec2(1.7, 8.5)) * 0.04;
+    float pulse = 0.5 + 0.5 * sin(time * rate + phase);
+
+    // ~12% occupancy
+    float exists = step(0.93, hash12(cell + vec2(7.1, 0.3)));
+
+    return shape * pow(pulse, 2.0) * exists;
 }
 
-float sparseBumps(vec3 p) {
-    vec3 q = p * 3.8 + vec3(time * 0.022, time * 0.016, time * 0.011);
+// ── Surface undulation ────────────────────────────────────────────────────────
+float surfaceWave(vec3 p) {
+    vec3  q = p * 3.8 + vec3(time * 0.022, time * 0.016, time * 0.011);
     float n = vnoise(q)        * 0.65
             + vnoise(q * 1.9 + vec3(3.7, 8.1, 2.4)) * 0.35;
     return pow(clamp(n, 0.0, 1.0), 8.0);
@@ -127,10 +152,10 @@ float rawDensity(vec3 p) {
 float scene(vec3 p) {
     float den = rawDensity(p);
     if (den < 0.333) return 2.0;
-    float baseDist = 1.0 / den - 1.0;
+    float baseDist  = 1.0 / den - 1.0;
     float proximity = exp(-abs(baseDist) * 16.0);
     float noiseAmp  = 0.032 * proximity;
-    return baseDist - sparseBumps(p) * noiseAmp;
+    return baseDist - surfaceWave(p) * noiseAmp;
 }
 
 vec3 sceneNormal(vec3 p) {
@@ -149,10 +174,6 @@ float estimateThickness(vec3 hitPos, vec3 lightDir) {
     for (int i = 0; i < 8; i++) {
         p += lightDir * stepSize;
         float den = rawDensity(p);
-        // Soft accumulation: smoothly ramp density above the threshold
-        // instead of a hard if(den > 0.333) binary gate.
-        // clamp(den - 0.333, 0.0, ...) gives 0 below threshold and
-        // rises continuously above it — no sudden jump.
         thickness += clamp(den - 0.333, 0.0, 2.0) * stepSize;
     }
     return thickness;
@@ -206,15 +227,18 @@ void main() {
         suv.x   *= aspect;
         float vig = 1.0 - clamp(dot(suv, suv) * 0.45, 0.0, 1.0);
         bg *= 0.35 + 0.65 * vig;
-        
-        // --- Suspended Micro-Bubbles ---
-        // Pass aspect-corrected UVs to prevent horizontal stretching
-        vec2 aspectUv = vec2(vUv.x * aspect, vUv.y);
-        float bubbles = microBubbles(aspectUv, time);
-        
-        // Blend with the fill light for the neon glow
-        bg += bubbles * mix(lc, colorFillLight, 0.7) * 1.5;
-        
+
+        // Edge fade — motes disappear near top/bottom
+        float fadeY = smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.88, vUv.y);
+
+        // Sharp pinpoints — bright, crisp
+        float sharp  = bgDustSharp(vec2(worldX, worldY));
+        bg += vec3(0.78, 0.88, 1.00) * sharp * 0.22 * fadeY;
+
+        // Blurry halos — dimmer, softer
+        float blurry = bgDustBlurry(vec2(worldX, worldY));
+        bg += vec3(0.65, 0.78, 1.00) * blurry * 0.10 * fadeY;
+
         gl_FragColor = vec4(bg, 1.0);
         return;
     }
@@ -241,14 +265,16 @@ void main() {
     col = 2.0 * col / (0.8 + 2.5 * col);
     col = pow(max(col, 0.0), vec3(0.8));
 
-    // ── Thickness SSS added AFTER tonemapping ───
     vec3  lightDir  = normalize(vec3(0.05, -1.0, 0.6));
     float thickness = estimateThickness(pos, -lightDir);
-
-    float thinness = exp(-thickness * 7.5);
-
-    vec3 sssColor = vec3(0.00, 1.00, 0.85);
+    float thinness  = exp(-thickness * 7.5);
+    vec3  sssColor  = vec3(0.00, 1.00, 0.85);
     col += sssColor * thinness * 1.75;
+
+    // Blob specks: 3% cells, cycle time ~60-120s, very faint
+    float speck   = dustSpecks(pos);
+    float cluster = vnoise(pos * 2.2 + vec3(time * 0.03)) * 0.6 + 0.4;
+    col += vec3(0.88, 0.94, 1.00) * speck * cluster * 0.35;
 
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
