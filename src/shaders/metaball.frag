@@ -53,7 +53,7 @@ const float NOISE_SPEED    = 0.6;
 // like light pooling inside thick wax.
 const float SSS_FALLOFF   = 0.15;  // how tightly the glow hugs each blob centre
                                    // lower = wider/softer, higher = tighter hotspot
-const float SSS_STRENGTH  = 0.07; // overall brightness of the glow layer
+const float SSS_STRENGTH  = 0.04; // overall brightness of the glow layer
 // ─────────────────────────────────────────────────────────────────────────────
 
 float wyvill(float d2, float R) {
@@ -178,7 +178,7 @@ void main() {
     float glowWhite = clamp(glow * 1.2, 0.0, 1.0);    // less capped — drives whitening
     vec3  glowTint  = mix(colorWaxEdge, colorWaxCore, glowNorm);
           glowTint  = mix(glowTint, vec3(1.0), glowWhite * glowWhite);
-    col += glowTint * glow * SSS_STRENGTH * (0.6 + 0.4 * thickness);
+    col += glowTint * glow * SSS_STRENGTH * (0.6 + 1.5 * thickness);
     // ─────────────────────────────────────────────────────────────────────
 
     col = col / (col + 0.55) * 1.55;
