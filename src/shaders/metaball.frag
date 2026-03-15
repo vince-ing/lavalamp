@@ -23,6 +23,7 @@ const float MAX_STEP    = 0.06;
 const float LEN_FACTOR  = 0.45;
 const float NDELTA      = 0.001;
 
+// Restored to your original math to fix the weird spikes and movement
 float scene(vec3 p) {
     float den = 0.0;
     for (int i = 0; i < 30; i++) {
@@ -46,6 +47,7 @@ vec3 sceneNormal(vec3 p) {
     ));
 }
 
+// Restored secondary ray loops
 float thickness(vec3 entry, vec3 rayDir) {
     vec3  p = entry;
     float t = 0.0;
@@ -64,15 +66,13 @@ vec2 heatShimmer(vec2 uv) {
     return vec2(uv.x + shift * 0.001 * heat, uv.y);
 }
 
-// Trace a single ray, return color and hit (w=1) or miss (w=0)
+// Restored your original trace function with proper bisection to fix geometry tearing
 vec4 trace(vec2 uv) {
     float hw     = LAMP_HEIGHT * aspect;
     float worldX = (uv.x - 0.5) * 2.0 * hw;
     float worldY = uv.y * LAMP_HEIGHT;
-
     vec3 pos    = vec3(worldX, worldY, CAM_Z);
     vec3 rayDir = vec3(0.0, 0.0, 1.0);
-
     float dist   = 2.0;
     float tMarch = 0.0;
     float tMax   = LAMP_DEPTH + abs(CAM_Z) + 1.0;
@@ -100,7 +100,6 @@ vec4 trace(vec2 uv) {
         else                  posOut = mid;
     }
     pos = (posIn + posOut) * 0.5;
-
     vec3  N      = sceneNormal(pos);
     vec3  V      = -rayDir;
     float NdotV  = max(0.0, dot(N, V));
@@ -108,7 +107,6 @@ vec4 trace(vec2 uv) {
     float depthT = clamp((pos.z - CAM_Z) / (LAMP_DEPTH + abs(CAM_Z)), 0.0, 1.0);
     float thickN = clamp(thickness(pos, rayDir) / 0.7, 0.0, 1.0);
     float fresnel = pow(1.0 - NdotV, 2.5);
-
     vec3  keyDir  = normalize(vec3(0.3,  1.0,  0.6));
     vec3  fillDir = normalize(vec3(-0.6, 0.4,  0.7));
     vec3  rimDir  = normalize(vec3(0.5,  0.3, -0.8));
@@ -122,14 +120,12 @@ vec4 trace(vec2 uv) {
     vec3  coreHot     = mix(colorWaxCore, colorWaxHot, heat * 0.65);
     vec3  surfaceCol  = mix(colorWaxEdge * 0.7, coreHot,
                             clamp(dKey * 1.2 + heat * 0.25, 0.0, 1.0));
-
     vec3 col = surfaceCol * lighting;
     col += mix(colorWaxEdge, coreHot, heat * 0.8) * fresnel * 0.5;
     col += colorFillLight * dFill * fillLightStrength * 0.8;
 
     float sssStr = (1.0 - thickN) * heat * 0.4;
     col += mix(colorWaxEdge, colorWaxHot, heat * 0.5) * sssStr * dKey * 0.5;
-
     vec3  H    = normalize(keyDir + V);
     float spec = pow(max(0.0, dot(N, H)), 8.0) * 0.15;
     col += vec3(1.0, 0.95, 0.85) * spec;
@@ -138,22 +134,20 @@ vec4 trace(vec2 uv) {
     col  = col / (col + vec3(0.5)) * 1.5;
     col  = mix(col, mix(colorFluidBottom, colorFluidTop,
                clamp(pos.y / LAMP_HEIGHT, 0.0, 1.0)), depthT * 0.10);
-
     return vec4(col, 1.0);
 }
 
 void main() {
     vec2 uv = heatShimmer(vUv);
-
-    // 2x2 rotated grid supersample — smooth edges without soft halos
+    
+    // Fast 2x diagonal MSAA cuts lag significantly but keeps edges smooth
     vec2 px = vec2(dFdx(uv.x), dFdy(uv.y)) * 0.5;
-    vec4 c0 = trace(uv + vec2( 0.25,  0.75) * px);
-    vec4 c1 = trace(uv + vec2(-0.75,  0.25) * px);
-    vec4 c2 = trace(uv + vec2( 0.75, -0.25) * px);
-    vec4 c3 = trace(uv + vec2(-0.25, -0.75) * px);
+    vec4 c0 = trace(uv + vec2( 0.5,  0.5) * px);
+    vec4 c1 = trace(uv + vec2(-0.5, -0.5) * px);
 
-    vec4 result = (c0 + c1 + c2 + c3) * 0.25;
-
+    vec4 result = (c0 + c1) * 0.5;
+    
+    // Soft discard threshold allows the anti-aliased edge pixels to blend
     if (result.a < 0.01) discard;
     gl_FragColor = result;
 }

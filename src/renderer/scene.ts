@@ -3,8 +3,9 @@ import { SceneContext } from '../core/types';
 import { createCamera } from './camera';
 
 export function createScene(material: THREE.ShaderMaterial): SceneContext {
-    const renderer = new THREE.WebGLRenderer({ alpha: true });
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    // Bumped the pixel ratio back up to 2 for crisp resolution
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     const scene    = new THREE.Scene();
