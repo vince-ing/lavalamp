@@ -3,12 +3,14 @@ import { SceneContext } from '../core/types';
 import { BlobSystem } from '../simulation/blobSystem';
 import { InputController } from '../interaction/inputController';
 import { BloomPass } from '../renderer/bloomPass';
+import { GlowLayer } from '../renderer/glowLayer';
 
 export function startLoop(
     sceneContext: SceneContext,
     blobSystems: BlobSystem[],
     materials: THREE.ShaderMaterial[],
-    inputController?: InputController
+    inputController?: InputController,
+    glowLayer?: GlowLayer
 ): { onResize: (w: number, h: number) => void } {
     const { scene, camera, renderer } = sceneContext;
     let lastTime = performance.now();
@@ -41,6 +43,11 @@ export function startLoop(
             material.uniforms.aspect.value     = aspect;
         });
 
+        // Draw background glow behind the Three.js canvas
+        if (glowLayer) {
+            glowLayer.render(dt, t, blobSystems);
+        }
+
         bloom.render(renderer, scene, camera);
     }
 
@@ -50,6 +57,7 @@ export function startLoop(
         onResize: (w: number, h: number) => {
             renderer.setSize(w, h);
             bloom.resize(w, h);
+            if (glowLayer) glowLayer.resize(w, h);
         }
     };
 }

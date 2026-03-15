@@ -5,6 +5,7 @@ import { createScene } from './renderer/scene';
 import { BlobSystem } from './simulation/blobSystem';
 import { InputController } from './interaction/inputController';
 import { startLoop } from './animation/animationLoop';
+import { GlowLayer } from './renderer/glowLayer';
 import { ColorMenu, ColorState } from './ui/colorMenu';
 import './style.css';
 
@@ -51,6 +52,16 @@ function bootstrap() {
 
     const sceneContext = createScene(materials);
     const canvas = sceneContext.renderer.domElement;
+
+    // GlowLayer canvas must be inserted BEFORE the Three.js canvas so it sits
+    // behind it in the stacking order. We create it first, then append the
+    // WebGL canvas on top.
+    const glowLayer = new GlowLayer();
+
+    // Three.js canvas sits on top of the glow layer
+    canvas.style.position = 'fixed';
+    canvas.style.inset = '0';
+    canvas.style.zIndex = '1';
     document.body.appendChild(canvas);
 
     const counts = scaledCounts();
@@ -60,7 +71,7 @@ function bootstrap() {
     const blobSystems = [sysBack, sysMid, sysFront];
 
     const input = new InputController(canvas);
-    const { onResize } = startLoop(sceneContext, blobSystems, materials, input);
+    const { onResize } = startLoop(sceneContext, blobSystems, materials, input, glowLayer);
 
     const menu = new ColorMenu((state: ColorState) => {
         const waxEdge     = new THREE.Color(state.waxEdge);
@@ -77,6 +88,11 @@ function bootstrap() {
             mat.uniforms.colorFogBlend.value    = fluidBottom;
             mat.uniforms.colorFillLight.value   = fillLight;
         }
+
+        // Keep glow layer colours in sync with the colour picker
+        glowLayer.waxCoreColor.copy(waxCore);
+        glowLayer.fluidBottomColor.copy(fluidBottom);
+        glowLayer.fluidTopColor.copy(fluidTop);
 
         applyDynamicGradient(state.fluidTop, state.fluidBottom);
     });
